@@ -1,17 +1,26 @@
 const nodemailer = require('nodemailer');
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.SMTP_USERNAME || 'progressfit.app@gmail.com',
-    pass: process.env.SMTP_PASSWORD || 'dcbrkangjfzvrqir',
-  },
-});
+const createTransporter = () => {
+  const user = process.env.SMTP_USERNAME || 'progressfit.app@gmail.com';
+  const pass = process.env.SMTP_PASSWORD || 'dcbrkangjfzvrqir';
+
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true, // use SSL
+    auth: { user, pass },
+    tls: {
+      rejectUnauthorized: false,
+    },
+  });
+};
 
 /**
  * Send a 6-digit OTP verification email to the user.
  */
 const sendOtpEmail = async (toEmail, otpCode) => {
+  const transporter = createTransporter();
+
   const mailOptions = {
     from: `"ProgressFit" <${process.env.EMAIL_FROM || 'progressfit.app@gmail.com'}>`,
     to: toEmail,
