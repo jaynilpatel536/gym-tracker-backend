@@ -14,9 +14,8 @@ const createNodemailerTransporter = () => {
 };
 
 /**
- * Send a 6-digit OTP verification email to the user.
- * Uses Brevo HTTP REST API for ultra-fast (<0.5s) instant email delivery,
- * bypassing all SMTP handshake delays and port timeouts.
+ * Send a 6-digit OTP verification email securely via Brevo REST API (HTTPS).
+ * Fallback to Nodemailer SSL transport if Brevo is unavailable.
  */
 const sendOtpEmail = async (toEmail, otpCode) => {
   const htmlContent = `
@@ -36,15 +35,17 @@ const sendOtpEmail = async (toEmail, otpCode) => {
     </div>
   `;
 
-  // Brevo Ultra-Fast HTTP REST API (Bypasses all SMTP handshake delays <0.5s)
+  // Option A: Brevo HTTP REST API (Secure HTTPS)
   const brevoKey = process.env.BREVO_API_KEY || process.env.BREVO_SMTP_KEY;
   if (brevoKey) {
     try {
-      const senderEmail = process.env.BREVO_SMTP_USER || process.env.EMAIL_FROM || 'progressfit.app@gmail.com';
+      const senderEmail =
+        process.env.BREVO_SMTP_USER || process.env.EMAIL_FROM || 'progressfit.app@gmail.com';
+
       const response = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: {
-          'accept': 'application/json',
+          accept: 'application/json',
           'api-key': brevoKey,
           'content-type': 'application/json',
         },
@@ -58,16 +59,16 @@ const sendOtpEmail = async (toEmail, otpCode) => {
 
       const resData = await response.json();
       if (response.ok) {
-        console.log(`[Brevo HTTP API Ultra-Fast Email] OTP ${otpCode} sent to ${toEmail}:`, resData.messageId || 'Success');
+        console.log(`[Brevo REST API] Success: OTP sent to ${toEmail} (MessageID: ${resData.messageId || 'OK'})`);
         return;
       }
-      console.error('[Brevo HTTP API Warning]', response.status, resData);
+      console.error(`[Brevo REST API Warning] Status ${response.status}:`, resData.message || resData);
     } catch (err) {
-      console.error('Brevo HTTP API error, falling back to Gmail SSL:', err.message);
+      console.error('[Brevo REST API Connection Error]:', err.message);
     }
   }
 
-  // Fallback to Gmail SSL Transporter
+  // Option B: Secondary Fallback to Nodemailer SSL
   try {
     const transporter = createNodemailerTransporter();
     await transporter.sendMail({
@@ -76,9 +77,10 @@ const sendOtpEmail = async (toEmail, otpCode) => {
       subject: `Your ProgressFit Verification Code: ${otpCode}`,
       html: htmlContent,
     });
-    console.log(`[Gmail SMTP Email] OTP ${otpCode} sent to ${toEmail}`);
+    console.log(`[Gmail SMTP Fallback] Success: OTP sent to ${toEmail}`);
   } catch (err) {
-    console.error('Gmail SMTP fallback error:', err.message);
+    console.error('[Gmail SMTP Fallback Error]:', err.message);
+    throw new Error('Email delivery failed');
   }
 };
 
