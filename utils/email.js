@@ -1,23 +1,37 @@
-const { Resend } = require('resend');
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-const createNodemailerTransporter = () => {
-  const user = process.env.SMTP_USERNAME || 'progressfit.app@gmail.com';
-  const pass = process.env.SMTP_PASSWORD || 'dcbrkangjfzvrqir';
+const createTransporter = () => {
+  // If Brevo SMTP Key is configured (Instant <1s delivery to ANY email)
+  if (process.env.BREVO_SMTP_KEY) {
+    return nodemailer.createTransport({
+      host: 'smtp-relay.brevo.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.BREVO_SMTP_USER || process.env.SMTP_USERNAME || 'progressfit.app@gmail.com',
+        pass: process.env.BREVO_SMTP_KEY,
+      },
+    });
+  }
 
+  // Fallback to Gmail SSL port 465
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
     secure: true,
-    auth: { user, pass },
+    auth: {
+      user: process.env.SMTP_USERNAME || 'progressfit.app@gmail.com',
+      pass: process.env.SMTP_PASSWORD || 'dcbrkangjfzvrqir',
+    },
     tls: { rejectUnauthorized: false },
   });
 };
 
 /**
  * Send a 6-digit OTP verification email to the user.
- * Uses Resend API for instant (<1s) delivery if RESEND_API_KEY is present,
- * otherwise falls back to Nodemailer SMTP.
+ * Supports Brevo SMTP for instant <1s delivery to any recipient,
+ * Resend API, or Gmail SMTP fallback.
  */
 const sendOtpEmail = async (toEmail, otpCode) => {
   const htmlContent = `
@@ -37,6 +51,25 @@ const sendOtpEmail = async (toEmail, otpCode) => {
     </div>
   `;
 
+  // Option A: Brevo SMTP (Instant <1s to ANY email address)
+  if (process.env.BREVO_SMTP_KEY) {
+    try {
+      const transporter = createTransporter();
+      const senderEmail = process.env.BREVO_SMTP_USER || process.env.EMAIL_FROM || 'progressfit.app@gmail.com';
+      await transporter.sendMail({
+        from: `"ProgressFit" <${senderEmail}>`,
+        to: toEmail,
+        subject: `Your ProgressFit Verification Code: ${otpCode}`,
+        html: htmlContent,
+      });
+      console.log(`[Brevo Instant Email] OTP ${otpCode} sent successfully to ${toEmail}`);
+      return;
+    } catch (err) {
+      console.error('Brevo SMTP error, falling back:', err.message);
+    }
+  }
+
+  // Option B: Resend API
   if (process.env.RESEND_API_KEY) {
     try {
       const resend = new Resend(process.env.RESEND_API_KEY);
@@ -49,19 +82,19 @@ const sendOtpEmail = async (toEmail, otpCode) => {
       console.log(`[Resend Instant Email] OTP ${otpCode} sent to ${toEmail}`);
       return;
     } catch (err) {
-      console.error('Resend API error, falling back to SMTP:', err.message);
+      console.error('Resend API error, falling back to Gmail SMTP:', err.message);
     }
   }
 
-  // Fallback to Nodemailer SSL Transporter
-  const transporter = createNodemailerTransporter();
+  // Option C: Fallback to Gmail SMTP
+  const transporter = createTransporter();
   await transporter.sendMail({
     from: `"ProgressFit" <${process.env.EMAIL_FROM || 'progressfit.app@gmail.com'}>`,
     to: toEmail,
     subject: `Your ProgressFit Verification Code: ${otpCode}`,
     html: htmlContent,
   });
-  console.log(`[SMTP Email] OTP ${otpCode} sent to ${toEmail}`);
+  console.log(`[Gmail SMTP Email] OTP ${otpCode} sent to ${toEmail}`);
 };
 
 module.exports = { sendOtpEmail };
