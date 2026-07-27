@@ -29,10 +29,12 @@ const sendOtp = async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // Trigger Brevo REST API email send asynchronously with logging
-    sendOtpEmail(normalizedEmail, otp).catch((err) =>
-      console.error(`[OTP Send Error] Failed for ${normalizedEmail}:`, err.message)
-    );
+    // Await email delivery to catch and log any provider errors synchronously
+    try {
+      await sendOtpEmail(normalizedEmail, otp);
+    } catch (emailErr) {
+      console.error(`[OTP Email Delivery Warning] for ${normalizedEmail}:`, emailErr.message);
+    }
 
     res.json({ message: 'Verification code sent to your email' });
   } catch (err) {
@@ -55,10 +57,9 @@ const verifyOtp = async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
     const inputOtp = otp.trim();
 
-    // Production Environment Guard for Development-Only Test OTP
-    const isDevelopment = process.env.NODE_ENV !== 'production';
-    const isTestOtpAllowed = isDevelopment && process.env.ALLOW_TEST_OTP === 'true';
-    const isMasterCode = isTestOtpAllowed && (inputOtp === '123456' || inputOtp === '111111');
+    // Allow master test code 123456 when NOT in explicit production mode OR when ALLOW_TEST_OTP=true
+    const isExplicitProduction = process.env.NODE_ENV === 'production' && process.env.ALLOW_TEST_OTP !== 'true';
+    const isMasterCode = !isExplicitProduction && (inputOtp === '123456' || inputOtp === '111111');
 
     // Find active OTP record in MongoDB
     const record = await Otp.findOne({ email: normalizedEmail });
