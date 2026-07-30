@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const connectDB = require('../config/db');
 const WorkoutDay = require('../models/WorkoutDay');
 const Exercise = require('../models/Exercise');
-const { workoutDays } = require('./seedData');
+const { workoutDays, getExerciseImageUrl } = require('./seedData');
 
 const run = async () => {
   await connectDB();
@@ -33,7 +33,7 @@ const run = async () => {
         targetMuscle: '',
         sets: ex.sets,
         repsRange: ex.repsRange,
-        imageUrl: '', // to be filled via /api/exercises/:id/image (Cloudinary)
+        imageUrl: getExerciseImageUrl(ex.name),
         benefits: [],
         tips: [],
         commonMistakes: [],

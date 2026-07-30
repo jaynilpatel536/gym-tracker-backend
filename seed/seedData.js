@@ -1,5 +1,68 @@
-// Default workout plan, transcribed exactly as provided.
-// No invented exercises or numbers — this is the source of truth for seeding.
+// Default 7-Day Workout Routine with exact exercise image filenames
+
+const IMAGE_MAP = {
+  'Deadlift': 'Deadlift.jpeg',
+  'Pull-up': 'Pull-up.jpg',
+  'Lat Pulldown': 'Lat Pulldown.jpg',
+  'Seated Cable Row': 'Seated Cable Row.jpg',
+  'One-arm Dumbbell Row': 'One-arm Dumbbell Row.jpeg',
+  'Straight-arm Lat Pulldown': 'Straight-arm Lat Pulldown.jpg',
+  'Bent Over Lateral Raise': 'Bent Over Lateral Raise.jpeg',
+  'Standing Dumbbell Curl': 'Standing Dumbbell Curl.jpeg',
+  'Standing Hammer Curl': 'Standing Hammer Curl.jpg',
+  'Wrist Curl': 'Wrist Curl.jpeg',
+  'Reverse Wrist Curl': 'Reverse Wrist Curl.webp',
+  'Incline Dumbbell Press': 'Incline Dumbbell Press.jpg',
+  'Bench Press': 'Bench Press.jpeg',
+  'Incline Cable Fly': 'Incline Cable Fly.jpg',
+  'Decline Cable Fly': 'Decline Cable Fly.jpeg',
+  'Dumbbell Lateral Raise': 'Dumbbell Lateral Raise.jpg',
+  'Standing Dumbbell Shoulder Press': 'Standing Dumbbell Shoulder Press.jpg',
+  'Face Pull': 'Face Pull.jpg',
+  'Barbell Shrugs': 'Barbell Shrugs.jpeg',
+  'Rope Pushdown': 'Rope Pushdown.jpeg',
+  'Seated EZ Bar Triceps Extension': 'Seated EZ Bar Triceps Extension.jpeg',
+  'Bench Dips': 'Bench Dips.jpg',
+  'Squat': 'Squat.jpg',
+  'Angled Leg Press': 'Angled Leg Press.jpg',
+  'Leg Extension': 'Leg Extension.jpg',
+  'Stiff-legged Deadlift': 'Stiff-legged Deadlift.jpeg',
+  'Standing Calf Raise': 'Standing Barbell Calf Raise.jpg',
+  'Hanging Knee Raise': 'Hanging Knee Raise.jpeg',
+  'Cable Crunch': 'Cable Crunch.jpg',
+  'Hanging Knee Oblique Raise': 'Hanging Knee Oblique Raise.jpg',
+  'Barbell Rollout': 'Barbell Rollout.jpg',
+  'Chin-up': 'Chin-up.jpg',
+  'V-Bar Lat Pulldown': 'V-Bar Lat Pulldown.jpeg',
+  'Bent Over Row': 'Bent Over Row.jpg',
+  'Incline Dumbbell Curl': 'Incline Dumbbell Curl.jpeg',
+  'Preacher Curl': 'Preacher Curl.jpeg',
+  'Incline Press Machine': 'Incline Press Machine.webp',
+  'Dumbbell Press': 'Dumbbell Press.jpg',
+  'Dumbbell Fly': 'Dumbbell Fly.jpeg',
+  'Parallel Bar Dips': 'Parallel Bar Dips.jpg',
+  'Single Arm Cable Lateral Raise': 'Single Arm Cable Lateral Raise.gif',
+  'Dumbbell Shrugs': 'Dumbbell Shrugs.jpg.jpg',
+  'Reverse Pushdown': 'Reverse Pushdown.jpg',
+  'One-arm Reverse Pushdown': 'One-arm Reverse Pushdown.jpeg',
+  'Sumo Squat': 'Sumo Squat.jpeg',
+  'Romanian Deadlift': 'Romanian Deadlift.webp',
+  'Walking Lunges': 'Walking Lunges.jpeg',
+  'Seated Leg Curl': 'Seated Leg Curl.jpeg',
+  'Seated Calf Raise': 'Seated Calf Raise.jpg',
+  'Roman Chair Leg Raise': 'Roman Chair Leg Raise.jpeg',
+  'Bicycle Crunch': 'Bicycle Crunch.jpeg',
+  'Russian Twist': 'Russian Twist.jpg',
+  'Plank': 'Plank.jpeg',
+};
+
+const BASE_URL = process.env.PUBLIC_API_URL || 'https://gym-tracker-backend-qpu8.onrender.com';
+
+const getExerciseImageUrl = (name) => {
+  const filename = IMAGE_MAP[name];
+  if (!filename) return '';
+  return `${BASE_URL}/exercise-images/${encodeURIComponent(filename)}`;
+};
 
 const workoutDays = [
   {
@@ -30,7 +93,8 @@ const workoutDays = [
       { category: 'Chest', name: 'Incline Cable Fly', sets: 3, repsRange: '12' },
       { category: 'Chest', name: 'Decline Cable Fly', sets: 3, repsRange: '12' },
       { category: 'Shoulders', name: 'Dumbbell Lateral Raise', sets: 3, repsRange: '15' },
-      { category: 'Shoulders', name: 'Cable Upright Row', sets: 3, repsRange: '10' },
+      { category: 'Shoulders', name: 'Standing Dumbbell Shoulder Press', sets: 3, repsRange: '10' },
+      { category: 'Shoulders', name: 'Face Pull', sets: 3, repsRange: '12-15' },
       { category: 'Traps', name: 'Barbell Shrugs', sets: 3, repsRange: '12' },
       { category: 'Triceps', name: 'Rope Pushdown', sets: 3, repsRange: '12' },
       { category: 'Triceps', name: 'Seated EZ Bar Triceps Extension', sets: 3, repsRange: '10' },
@@ -46,7 +110,7 @@ const workoutDays = [
       { category: 'Legs', name: 'Angled Leg Press', sets: 3, repsRange: '12' },
       { category: 'Legs', name: 'Leg Extension', sets: 3, repsRange: '15' },
       { category: 'Legs', name: 'Stiff-legged Deadlift', sets: 3, repsRange: '10' },
-      { category: 'Legs', name: 'Standing Barbell Calf Raise', sets: 4, repsRange: '15' },
+      { category: 'Legs', name: 'Standing Calf Raise', sets: 4, repsRange: '15' },
       { category: 'Abs', name: 'Hanging Knee Raise', sets: 3, repsRange: '15' },
       { category: 'Abs', name: 'Cable Crunch', sets: 3, repsRange: '15' },
       { category: 'Abs', name: 'Hanging Knee Oblique Raise', sets: 3, repsRange: '12' },
@@ -80,7 +144,7 @@ const workoutDays = [
       { category: 'Chest', name: 'Dumbbell Fly', sets: 3, repsRange: '12' },
       { category: 'Chest', name: 'Parallel Bar Dips', sets: 3, repsRange: '10-12' },
       { category: 'Shoulders', name: 'Single Arm Cable Lateral Raise', sets: 3, repsRange: '15' },
-      { category: 'Shoulders', name: 'Bent Over Lateral Raise', sets: 3, repsRange: '15' },
+      { category: 'Shoulders', name: 'Face Pull', sets: 3, repsRange: '12-15' },
       { category: 'Traps', name: 'Dumbbell Shrugs', sets: 3, repsRange: '12' },
       { category: 'Triceps', name: 'Reverse Pushdown', sets: 3, repsRange: '12' },
       { category: 'Triceps', name: 'One-arm Reverse Pushdown', sets: 3, repsRange: '12' },
@@ -93,14 +157,14 @@ const workoutDays = [
     isRestDay: false,
     exercises: [
       { category: 'Legs', name: 'Sumo Squat', sets: 4, repsRange: '10' },
-      { category: 'Legs', name: 'Walking Lunges', sets: 3, repsRange: '12 Each Leg' },
       { category: 'Legs', name: 'Romanian Deadlift', sets: 3, repsRange: '10' },
+      { category: 'Legs', name: 'Walking Lunges', sets: 3, repsRange: '12 Each Leg' },
       { category: 'Legs', name: 'Seated Leg Curl', sets: 3, repsRange: '12' },
       { category: 'Legs', name: 'Seated Calf Raise', sets: 4, repsRange: '15' },
       { category: 'Abs', name: 'Roman Chair Leg Raise', sets: 3, repsRange: '15' },
       { category: 'Abs', name: 'Bicycle Crunch', sets: 3, repsRange: '20' },
       { category: 'Abs', name: 'Russian Twist', sets: 3, repsRange: '20' },
-      { category: 'Abs', name: 'Plank', sets: 3, repsRange: '45-60 Seconds' },
+      { category: 'Abs', name: 'Plank', sets: 3, repsRange: '45-60 sec' },
     ],
   },
   {
@@ -109,15 +173,18 @@ const workoutDays = [
     isRestDay: true,
     exercises: [],
     recoveryTips: [
-      'Prioritize 7-9 hours of sleep to support muscle recovery.',
-      'Keep daily activity light — walking is fine, avoid heavy training.',
+      'Complete Rest',
+      '20-30 min Walking (Optional)',
+      '10-15 min Stretching',
+      'Hydration',
+      'Dermaroller (Evening)',
     ],
     stretchingSuggestions: [
-      'Full-body static stretching, 5-10 minutes.',
+      'Full-body static stretching, 10-15 minutes.',
       'Foam roll major muscle groups worked earlier in the week.',
     ],
     hydrationReminder: 'Drink water consistently through the day, even on rest days.',
   },
 ];
 
-module.exports = { workoutDays };
+module.exports = { workoutDays, getExerciseImageUrl };

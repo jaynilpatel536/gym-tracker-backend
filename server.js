@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const connectDB = require('./config/db');
 
 const authRoutes = require('./routes/authRoutes');
@@ -15,6 +16,9 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+// Serve exercise images statically from the exercise folder
+app.use('/exercise-images', express.static(path.join(__dirname, 'exercise')));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
