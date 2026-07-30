@@ -1,4 +1,5 @@
 const WorkoutHistory = require('../models/WorkoutHistory');
+const Exercise = require('../models/Exercise');
 const { suggestProgression } = require('../utils/progressiveOverload');
 
 // POST /api/workout-history -> log a completed exercise (Done button)
@@ -26,6 +27,22 @@ const logWorkout = async (req, res) => {
       notes: notes || '',
       isPersonalRecord,
     });
+
+    // Permanently update exercise.currentWeight in database with newly saved set weight
+    if (sets[0] && sets[0].weightKg > 0) {
+      const ex = await Exercise.findById(exerciseId);
+      if (ex) {
+        ex.currentWeight = sets[0].weightKg;
+        // If auto progressive overload is enabled, recalculate next overload schedule from new weight date
+        if (ex.autoProgressiveEnabled) {
+          const now = new Date();
+          const intervalWeeks = ex.increaseIntervalWeeks || 3;
+          ex.lastIncreaseDate = now;
+          ex.nextIncreaseDate = new Date(now.getTime() + intervalWeeks * 7 * 24 * 60 * 60 * 1000);
+        }
+        await ex.save();
+      }
+    }
 
     res.status(201).json({ entry });
   } catch (err) {
@@ -76,6 +93,10 @@ const syncHistory = async (req, res) => {
         notes: entry.notes || '',
         isPersonalRecord,
       });
+
+      if (entry.sets && entry.sets[0] && entry.sets[0].weightKg > 0) {
+        await Exercise.findByIdAndUpdate(entry.exerciseId, { currentWeight: entry.sets[0].weightKg });
+      }
 
       results.push({ localId: entry.localId, serverId: saved._id });
     }
