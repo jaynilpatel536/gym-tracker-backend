@@ -68,13 +68,13 @@ const getExerciseImageUrl = (name) => {
 
 // Plan 1 Routine (Day 1-3 repeated for Day 4-6)
 const plan1Pull = [
-  { category: 'Compound', name: 'Deadlift', sets: 3, repsRange: '5-8' },
+  { category: 'Back', name: 'Deadlift', sets: 3, repsRange: '5-8' },
   { category: 'Back', name: 'Lat Pulldown', sets: 3, repsRange: '8-12' },
   { category: 'Back', name: 'Seated Cable Row', sets: 3, repsRange: '8-12' },
-  { category: 'Biceps', name: 'Standing Dumbbell Curl', sets: 3, repsRange: '8-12' },
-  { category: 'Biceps', name: 'Standing Hammer Curl', sets: 3, repsRange: '10-12' },
   { category: 'Rear Delts', name: 'Face Pull', sets: 3, repsRange: '12-15' },
   { category: 'Traps', name: 'Barbell Shrugs', sets: 3, repsRange: '10-15' },
+  { category: 'Biceps', name: 'Standing Dumbbell Curl', sets: 3, repsRange: '8-12' },
+  { category: 'Biceps', name: 'Standing Hammer Curl', sets: 3, repsRange: '10-12' },
   { category: 'Forearms', name: 'Wrist Curl', sets: 2, repsRange: '12-15' },
   { category: 'Forearms', name: 'Reverse Wrist Curl', sets: 2, repsRange: '12-15' },
 ];
@@ -82,8 +82,8 @@ const plan1Pull = [
 const plan1Push = [
   { category: 'Chest', name: 'Incline Dumbbell Press', sets: 3, repsRange: '8-12' },
   { category: 'Chest', name: 'Bench Press', sets: 3, repsRange: '6-10' },
-  { category: 'Chest', name: 'Parallel Bar Dips', sets: 3, repsRange: '8-12' },
   { category: 'Chest', name: 'Decline Cable Fly', sets: 2, repsRange: '12-15' },
+  { category: 'Chest', name: 'Parallel Bar Dips', sets: 3, repsRange: '8-12' },
   { category: 'Shoulders', name: 'Standing Dumbbell Shoulder Press', sets: 3, repsRange: '8-12' },
   { category: 'Shoulders', name: 'Dumbbell Lateral Raise', sets: 3, repsRange: '12-15' },
   { category: 'Triceps', name: 'Rope Pushdown', sets: 3, repsRange: '10-15' },
@@ -91,11 +91,11 @@ const plan1Push = [
 ];
 
 const plan1Legs = [
-  { category: 'Legs', name: 'Squat', sets: 4, repsRange: '6-10' },
-  { category: 'Legs', name: 'Angled Leg Press', sets: 3, repsRange: '10-12' },
-  { category: 'Legs', name: 'Leg Extension', sets: 3, repsRange: '12-15' },
-  { category: 'Legs', name: 'Stiff-legged Deadlift', sets: 3, repsRange: '8-12' },
-  { category: 'Legs', name: 'Standing Calf Raise', sets: 4, repsRange: '12-15' },
+  { category: 'Quads', name: 'Squat', sets: 4, repsRange: '6-10' },
+  { category: 'Quads', name: 'Angled Leg Press', sets: 3, repsRange: '10-12' },
+  { category: 'Quads', name: 'Leg Extension', sets: 3, repsRange: '12-15' },
+  { category: 'Hamstrings', name: 'Stiff-legged Deadlift', sets: 3, repsRange: '8-12' },
+  { category: 'Calves', name: 'Standing Calf Raise', sets: 4, repsRange: '12-15' },
   { category: 'Abs', name: 'Cable Crunch', sets: 3, repsRange: '12-15' },
   { category: 'Abs', name: 'Hanging Knee Raise', sets: 3, repsRange: '12-15' },
 ];
@@ -118,25 +118,25 @@ const restDayObj = {
 };
 
 const workoutDaysPlan1 = [
-  { dayNumber: 1, name: 'Day 1 – Pull A', isRestDay: false, exercises: plan1Pull },
-  { dayNumber: 2, name: 'Day 2 – Push A', isRestDay: false, exercises: plan1Push },
-  { dayNumber: 3, name: 'Day 3 – Legs A', isRestDay: false, exercises: plan1Legs },
-  { dayNumber: 4, name: 'Day 4 – Pull A', isRestDay: false, exercises: plan1Pull },
-  { dayNumber: 5, name: 'Day 5 – Push A', isRestDay: false, exercises: plan1Push },
-  { dayNumber: 6, name: 'Day 6 – Legs A', isRestDay: false, exercises: plan1Legs },
+  { dayNumber: 1, name: 'Day 1 – Pull', isRestDay: false, exercises: plan1Pull },
+  { dayNumber: 2, name: 'Day 2 – Push', isRestDay: false, exercises: plan1Push },
+  { dayNumber: 3, name: 'Day 3 – Legs', isRestDay: false, exercises: plan1Legs },
+  { dayNumber: 4, name: 'Day 4 – Pull', isRestDay: false, exercises: plan1Pull },
+  { dayNumber: 5, name: 'Day 5 – Push', isRestDay: false, exercises: plan1Push },
+  { dayNumber: 6, name: 'Day 6 – Legs', isRestDay: false, exercises: plan1Legs },
   { dayNumber: 7, name: 'Day 7 – Rest Day', ...restDayObj },
 ];
 
 // Plan 2 Routine (Day 1-3 repeated for Day 4-6)
 const plan2Pull = [
-  { category: 'Compound', name: 'Deadlift', sets: 3, repsRange: '5-8' },
+  { category: 'Back', name: 'Deadlift', sets: 3, repsRange: '5-8' },
   { category: 'Back', name: 'Pull-up', sets: 3, repsRange: '6-10' },
   { category: 'Back', name: 'Lat Pulldown', sets: 3, repsRange: '8-12' },
   { category: 'Back', name: 'One-arm Dumbbell Row', sets: 3, repsRange: '8-12' },
+  { category: 'Rear Delts', name: 'Bent Over Lateral Raise', sets: 3, repsRange: '12-15' },
+  { category: 'Traps', name: 'Barbell Shrugs', sets: 3, repsRange: '10-15' },
   { category: 'Biceps', name: 'Incline Dumbbell Curl', sets: 3, repsRange: '8-12' },
   { category: 'Biceps', name: 'Preacher Curl', sets: 3, repsRange: '10-12' },
-  { category: 'Rear Delts', name: 'Bent Over Lateral Raise', sets: 3, repsRange: '12-15' },
-  { category: 'Traps', name: 'Dumbbell Shrugs', sets: 3, repsRange: '10-15' },
   { category: 'Forearms', name: 'Wrist Curl', sets: 2, repsRange: '12-15' },
   { category: 'Forearms', name: 'Reverse Wrist Curl', sets: 2, repsRange: '12-15' },
 ];
@@ -153,22 +153,22 @@ const plan2Push = [
 ];
 
 const plan2Legs = [
-  { category: 'Legs', name: 'Sumo Squat', sets: 4, repsRange: '8-10' },
-  { category: 'Legs', name: 'Angled Leg Press', sets: 3, repsRange: '10-12' },
-  { category: 'Legs', name: 'Leg Extension', sets: 3, repsRange: '12-15' },
-  { category: 'Legs', name: 'Stiff-legged Deadlift', sets: 3, repsRange: '8-12' },
-  { category: 'Legs', name: 'Standing Calf Raise', sets: 4, repsRange: '12-15' },
+  { category: 'Quads', name: 'Sumo Squat', sets: 4, repsRange: '8-10' },
+  { category: 'Quads', name: 'Angled Leg Press', sets: 3, repsRange: '10-12' },
+  { category: 'Quads', name: 'Leg Extension', sets: 3, repsRange: '12-15' },
+  { category: 'Hamstrings', name: 'Stiff-legged Deadlift', sets: 3, repsRange: '8-12' },
+  { category: 'Calves', name: 'Standing Calf Raise', sets: 4, repsRange: '12-15' },
   { category: 'Abs', name: 'Barbell Rollout', sets: 3, repsRange: '10-15' },
   { category: 'Abs', name: 'Roman Chair Leg Raise', sets: 3, repsRange: '12-15' },
 ];
 
 const workoutDaysPlan2 = [
-  { dayNumber: 1, name: 'Day 1 – Pull B', isRestDay: false, exercises: plan2Pull },
-  { dayNumber: 2, name: 'Day 2 – Push B', isRestDay: false, exercises: plan2Push },
-  { dayNumber: 3, name: 'Day 3 – Legs B', isRestDay: false, exercises: plan2Legs },
-  { dayNumber: 4, name: 'Day 4 – Pull B', isRestDay: false, exercises: plan2Pull },
-  { dayNumber: 5, name: 'Day 5 – Push B', isRestDay: false, exercises: plan2Push },
-  { dayNumber: 6, name: 'Day 6 – Legs B', isRestDay: false, exercises: plan2Legs },
+  { dayNumber: 1, name: 'Day 1 – Pull', isRestDay: false, exercises: plan2Pull },
+  { dayNumber: 2, name: 'Day 2 – Push', isRestDay: false, exercises: plan2Push },
+  { dayNumber: 3, name: 'Day 3 – Legs', isRestDay: false, exercises: plan2Legs },
+  { dayNumber: 4, name: 'Day 4 – Pull', isRestDay: false, exercises: plan2Pull },
+  { dayNumber: 5, name: 'Day 5 – Push', isRestDay: false, exercises: plan2Push },
+  { dayNumber: 6, name: 'Day 6 – Legs', isRestDay: false, exercises: plan2Legs },
   { dayNumber: 7, name: 'Day 7 – Rest Day', ...restDayObj },
 ];
 
