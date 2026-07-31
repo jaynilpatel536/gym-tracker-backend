@@ -22,4 +22,7 @@ const customPlanSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Compound index for user & active custom plan queries
+customPlanSchema.index({ user: 1, isActive: 1 });
+
 module.exports = mongoose.model('CustomPlan', customPlanSchema);
