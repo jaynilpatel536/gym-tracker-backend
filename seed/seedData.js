@@ -80,10 +80,10 @@ const plan1Pull = [
 ];
 
 const plan1Push = [
-  { category: 'Chest', name: 'Bench Press', sets: 3, repsRange: '6-10' },
   { category: 'Chest', name: 'Incline Dumbbell Press', sets: 3, repsRange: '8-12' },
+  { category: 'Chest', name: 'Bench Press', sets: 3, repsRange: '6-10' },
   { category: 'Chest', name: 'Parallel Bar Dips', sets: 3, repsRange: '8-12' },
-  { category: 'Chest', name: 'Incline Cable Fly', sets: 2, repsRange: '12-15' },
+  { category: 'Chest', name: 'Decline Cable Fly', sets: 2, repsRange: '12-15' },
   { category: 'Shoulders', name: 'Standing Dumbbell Shoulder Press', sets: 3, repsRange: '8-12' },
   { category: 'Shoulders', name: 'Dumbbell Lateral Raise', sets: 3, repsRange: '12-15' },
   { category: 'Triceps', name: 'Rope Pushdown', sets: 3, repsRange: '10-15' },
