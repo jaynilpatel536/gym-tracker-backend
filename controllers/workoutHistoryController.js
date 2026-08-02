@@ -108,8 +108,8 @@ const getExerciseProgressChartData = async (req, res) => {
     const timeline = [];
 
     logs.forEach((log) => {
-      const validWeights = log.sets.map((s) => s.weightKg).filter((w) => w > 0);
-      if (!validWeights.length) return;
+      const validWeights = log.sets.map((s) => parseFloat(s.weightKg) || 0).filter((w) => w > 0);
+      if (!validWeights.length) return; // Ignore zero-weight sessions from progress chart timeline
 
       const maxWeightInSession = Math.max(...validWeights);
       if (startingWeight === 0 || maxWeightInSession < startingWeight) {
@@ -122,7 +122,7 @@ const getExerciseProgressChartData = async (req, res) => {
       timeline.push({
         date: log.date,
         maxWeightKg: maxWeightInSession,
-        totalVolumeKg: log.sets.reduce((sum, s) => sum + s.weightKg * s.reps, 0),
+        totalVolumeKg: log.sets.reduce((sum, s) => sum + (parseFloat(s.weightKg) || 0) * (parseInt(s.reps, 10) || 0), 0),
         isPR: log.isPersonalRecord,
       });
     });
@@ -141,16 +141,31 @@ const getExerciseProgressChartData = async (req, res) => {
   }
 };
 
-// POST /api/workout-history/sync -> Sync queued offline logs
+// POST /api/workout-history/sync -> Sync queued offline logs with 60-second window deduplication
 const syncHistory = async (req, res) => {
   try {
     const { logs } = req.body;
     if (!Array.isArray(logs)) return res.status(400).json({ message: 'logs array is required' });
 
     const results = [];
+    const windowStart = new Date(Date.now() - 60 * 1000);
+
     for (const item of logs) {
       const { exerciseId, workoutDayId, sets, notes, date, localId } = item;
       const templateId = await resolveTemplateId(exerciseId);
+
+      // Check if duplicate log was already saved in the last 60 seconds
+      const existingLog = await WorkoutHistory.findOne({
+        user: req.user._id,
+        template: templateId,
+        workoutDay: workoutDayId,
+        createdAt: { $gte: windowStart },
+      });
+
+      if (existingLog) {
+        results.push({ localId, serverId: existingLog._id, duplicateSkipped: true });
+        continue;
+      }
 
       const previous = await WorkoutHistory.findOne({
         user: req.user._id,

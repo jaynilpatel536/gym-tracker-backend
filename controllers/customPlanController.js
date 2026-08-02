@@ -11,17 +11,55 @@ const DEFAULT_DAYS = [
   { dayNumber: 7, name: 'Day 7', exercises: [] },
 ];
 
+const formatCustomPlanDays = (days) => {
+  return days.map((d) => ({
+    dayNumber: d.dayNumber,
+    name: d.name,
+    exercises: (d.exercises || []).map((ex) => {
+      const tpl = ex.template || {};
+      return {
+        _id: ex._id,
+        templateId: tpl._id || ex._id,
+        sets: ex.sets || 3,
+        repsRange: ex.repsRange || '8-12',
+        defaultRestSeconds: ex.defaultRestSeconds || 90,
+        name: tpl.name || 'Exercise',
+        category: tpl.category || '',
+        muscleGroup: tpl.muscleGroup || tpl.category || '',
+        targetMuscle: tpl.targetMuscle || '',
+        imageUrl: tpl.imageUrl || '',
+        currentWeight: tpl.currentWeight || 0,
+        autoProgressiveEnabled: !!tpl.autoProgressiveEnabled,
+        increaseIntervalWeeks: tpl.increaseIntervalWeeks || 3,
+        increaseWeightKg: tpl.increaseWeightKg || 2.5,
+        nextIncreaseDate: tpl.nextIncreaseDate || null,
+      };
+    }),
+  }));
+};
+
 // GET /api/custom-plans -> Get all custom plans for logged in user
 const getCustomPlans = async (req, res) => {
   try {
     const plans = await CustomPlan.find({ user: req.user._id })
       .populate({
         path: 'days.exercises',
-        select: 'name category muscleGroup targetMuscle sets repsRange defaultRestSeconds imageUrl',
+        populate: { path: 'template' },
       })
       .sort({ createdAt: -1 });
 
-    res.json({ plans });
+    const formattedPlans = plans.map((p) => ({
+      _id: p._id,
+      user: p.user,
+      name: p.name,
+      goal: p.goal,
+      durationWeeks: p.durationWeeks,
+      isActive: p.isActive,
+      createdAt: p.createdAt,
+      days: formatCustomPlanDays(p.days),
+    }));
+
+    res.json({ plans: formattedPlans });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch custom plans', error: err.message });
   }
@@ -54,14 +92,25 @@ const getCustomPlanById = async (req, res) => {
   try {
     const plan = await CustomPlan.findOne({ _id: req.params.id, user: req.user._id }).populate({
       path: 'days.exercises',
-      select: 'name category muscleGroup targetMuscle sets repsRange defaultRestSeconds imageUrl',
+      populate: { path: 'template' },
     });
 
     if (!plan) {
       return res.status(404).json({ message: 'Custom plan not found' });
     }
 
-    res.json({ plan });
+    const formatted = {
+      _id: plan._id,
+      user: plan.user,
+      name: plan.name,
+      goal: plan.goal,
+      durationWeeks: plan.durationWeeks,
+      isActive: plan.isActive,
+      createdAt: plan.createdAt,
+      days: formatCustomPlanDays(plan.days),
+    };
+
+    res.json({ plan: formatted });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch custom plan', error: err.message });
   }
@@ -89,10 +138,21 @@ const updatePlanDayExercises = async (req, res) => {
 
     const updatedPlan = await CustomPlan.findById(plan._id).populate({
       path: 'days.exercises',
-      select: 'name category muscleGroup targetMuscle sets repsRange defaultRestSeconds imageUrl',
+      populate: { path: 'template' },
     });
 
-    res.json({ plan: updatedPlan });
+    const formatted = {
+      _id: updatedPlan._id,
+      user: updatedPlan.user,
+      name: updatedPlan.name,
+      goal: updatedPlan.goal,
+      durationWeeks: updatedPlan.durationWeeks,
+      isActive: updatedPlan.isActive,
+      createdAt: updatedPlan.createdAt,
+      days: formatCustomPlanDays(updatedPlan.days),
+    };
+
+    res.json({ plan: formatted });
   } catch (err) {
     res.status(500).json({ message: 'Failed to update plan exercises', error: err.message });
   }
@@ -117,10 +177,24 @@ const getActiveCustomPlan = async (req, res) => {
   try {
     const activePlan = await CustomPlan.findOne({ user: req.user._id, isActive: true }).populate({
       path: 'days.exercises',
-      select: 'name category muscleGroup targetMuscle sets repsRange defaultRestSeconds imageUrl',
+      populate: { path: 'template' },
     });
 
-    res.json({ activePlan });
+    let formatted = null;
+    if (activePlan) {
+      formatted = {
+        _id: activePlan._id,
+        user: activePlan.user,
+        name: activePlan.name,
+        goal: activePlan.goal,
+        durationWeeks: activePlan.durationWeeks,
+        isActive: activePlan.isActive,
+        createdAt: activePlan.createdAt,
+        days: formatCustomPlanDays(activePlan.days),
+      };
+    }
+
+    res.json({ activePlan: formatted });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch active custom plan', error: err.message });
   }
@@ -136,14 +210,25 @@ const setActiveCustomPlan = async (req, res) => {
       { new: true }
     ).populate({
       path: 'days.exercises',
-      select: 'name category muscleGroup targetMuscle sets repsRange defaultRestSeconds imageUrl',
+      populate: { path: 'template' },
     });
 
     if (!plan) {
       return res.status(404).json({ message: 'Custom plan not found' });
     }
 
-    res.json({ plan, message: `${plan.name} set as active plan` });
+    const formatted = {
+      _id: plan._id,
+      user: plan.user,
+      name: plan.name,
+      goal: plan.goal,
+      durationWeeks: plan.durationWeeks,
+      isActive: plan.isActive,
+      createdAt: plan.createdAt,
+      days: formatCustomPlanDays(plan.days),
+    };
+
+    res.json({ plan: formatted, message: `${plan.name} set as active plan` });
   } catch (err) {
     res.status(500).json({ message: 'Failed to set active plan', error: err.message });
   }
