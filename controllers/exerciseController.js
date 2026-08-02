@@ -1,13 +1,26 @@
 const fs = require('fs');
 const Exercise = require('../models/Exercise');
+const ExerciseTemplate = require('../models/ExerciseTemplate');
 const ExerciseVideo = require('../models/ExerciseVideo');
 const { uploadToCloudinary, deleteFromCloudinary } = require('../config/cloudinary');
 
-// GET /api/exercises -> Fetch all available system exercises
+// Helper to resolve an Exercise ID or ExerciseTemplate ID to an ExerciseTemplate document
+const resolveTemplate = async (id) => {
+  let template = await ExerciseTemplate.findById(id);
+  if (!template) {
+    const exercise = await Exercise.findById(id);
+    if (exercise && exercise.template) {
+      template = await ExerciseTemplate.findById(exercise.template);
+    }
+  }
+  return template;
+};
+
+// GET /api/exercises -> Fetch all available system exercises/templates
 const getAllExercisesUser = async (req, res) => {
   try {
-    const exercises = await Exercise.find({}).sort({ name: 1 });
-    res.json({ exercises });
+    const templates = await ExerciseTemplate.find({}).sort({ name: 1 });
+    res.json({ exercises: templates });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch exercises', error: err.message });
   }
@@ -16,13 +29,40 @@ const getAllExercisesUser = async (req, res) => {
 // GET /api/exercises/:id -> Exercise Details screen
 const getExerciseDetails = async (req, res) => {
   try {
-    const exercise = await Exercise.findById(req.params.id);
-    if (!exercise) return res.status(404).json({ message: 'Exercise not found' });
+    let exercise = await Exercise.findById(req.params.id).populate('template');
+    let template = null;
+    if (exercise && exercise.template) {
+      template = exercise.template;
+    } else {
+      template = await ExerciseTemplate.findById(req.params.id);
+    }
 
-    const video = await ExerciseVideo.findOne({ exercise: exercise._id });
+    if (!template) return res.status(404).json({ message: 'Exercise not found' });
+
+    const video = await ExerciseVideo.findOne({ exercise: exercise ? exercise._id : template._id });
+
+    const details = {
+      _id: exercise ? exercise._id : template._id,
+      templateId: template._id,
+      name: template.name,
+      category: template.category,
+      muscleGroup: template.muscleGroup,
+      targetMuscle: template.targetMuscle,
+      imageUrl: template.imageUrl,
+      benefits: template.benefits,
+      tips: template.tips,
+      commonMistakes: template.commonMistakes,
+      currentWeight: template.currentWeight,
+      autoProgressiveEnabled: template.autoProgressiveEnabled,
+      increaseIntervalWeeks: template.increaseIntervalWeeks,
+      increaseWeightKg: template.increaseWeightKg,
+      startDate: template.startDate,
+      nextIncreaseDate: template.nextIncreaseDate,
+      lastIncreaseDate: template.lastIncreaseDate,
+    };
 
     res.json({
-      exercise,
+      exercise: details,
       video: video ? { videoUrl: video.videoUrl, durationSeconds: video.durationSeconds } : null,
     });
   } catch (err) {
@@ -30,34 +70,28 @@ const getExerciseDetails = async (req, res) => {
   }
 };
 
-// PUT /api/exercises/:id -> Edit Exercise
+// PUT /api/exercises/:id -> Edit Exercise Template
 const updateExercise = async (req, res) => {
   try {
+    const template = await resolveTemplate(req.params.id);
+    if (!template) return res.status(404).json({ message: 'Exercise not found' });
+
     const allowedFields = [
       'name',
       'category',
       'muscleGroup',
       'targetMuscle',
-      'sets',
-      'repsRange',
-      'defaultRestSeconds',
       'benefits',
       'tips',
       'commonMistakes',
-      'order',
+      'imageUrl',
     ];
-    const updates = {};
     allowedFields.forEach((field) => {
-      if (req.body[field] !== undefined) updates[field] = req.body[field];
+      if (req.body[field] !== undefined) template[field] = req.body[field];
     });
 
-    const exercise = await Exercise.findByIdAndUpdate(req.params.id, updates, {
-      new: true,
-      runValidators: true,
-    });
-    if (!exercise) return res.status(404).json({ message: 'Exercise not found' });
-
-    res.json({ exercise });
+    await template.save();
+    res.json({ exercise: template });
   } catch (err) {
     res.status(500).json({ message: 'Failed to update exercise', error: err.message });
   }
@@ -66,18 +100,14 @@ const updateExercise = async (req, res) => {
 // DELETE /api/exercises/:id -> Delete Exercise
 const deleteExercise = async (req, res) => {
   try {
-    const exercise = await Exercise.findById(req.params.id);
-    if (!exercise) return res.status(404).json({ message: 'Exercise not found' });
+    const template = await resolveTemplate(req.params.id);
+    if (!template) return res.status(404).json({ message: 'Exercise not found' });
 
-    if (exercise.imagePublicId) {
-      await deleteFromCloudinary(exercise.imagePublicId, 'image');
+    if (template.imagePublicId) {
+      await deleteFromCloudinary(template.imagePublicId, 'image');
     }
-    const video = await ExerciseVideo.findOne({ exercise: exercise._id });
-    if (video?.videoPublicId) {
-      await deleteFromCloudinary(video.videoPublicId, 'video');
-    }
-    await ExerciseVideo.deleteOne({ exercise: exercise._id });
-    await exercise.deleteOne();
+    await Exercise.deleteMany({ template: template._id });
+    await template.deleteOne();
 
     res.json({ message: 'Exercise deleted' });
   } catch (err) {
@@ -85,48 +115,48 @@ const deleteExercise = async (req, res) => {
   }
 };
 
-// POST /api/exercises/:id/image -> multipart upload, stores only the Cloudinary URL
+// POST /api/exercises/:id/image -> Upload exercise image
 const uploadExerciseImage = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No image file provided' });
 
-    const exercise = await Exercise.findById(req.params.id);
-    if (!exercise) return res.status(404).json({ message: 'Exercise not found' });
+    const template = await resolveTemplate(req.params.id);
+    if (!template) return res.status(404).json({ message: 'Exercise not found' });
 
     const result = await uploadToCloudinary(req.file.path, {
       type: 'images',
-      publicId: `exercise_${exercise._id}`,
+      publicId: `template_${template._id}`,
     });
     fs.unlink(req.file.path, () => {});
 
-    exercise.imageUrl = result.secure_url;
-    exercise.imagePublicId = result.public_id;
-    await exercise.save();
+    template.imageUrl = result.secure_url;
+    template.imagePublicId = result.public_id;
+    await template.save();
 
-    res.json({ imageUrl: exercise.imageUrl });
+    res.json({ imageUrl: template.imageUrl });
   } catch (err) {
     res.status(500).json({ message: 'Image upload failed', error: err.message });
   }
 };
 
-// POST /api/exercises/:id/video -> multipart upload, stores only the Cloudinary URL
+// POST /api/exercises/:id/video -> Upload exercise video
 const uploadExerciseVideo = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No video file provided' });
 
-    const exercise = await Exercise.findById(req.params.id);
-    if (!exercise) return res.status(404).json({ message: 'Exercise not found' });
+    const template = await resolveTemplate(req.params.id);
+    if (!template) return res.status(404).json({ message: 'Exercise not found' });
 
     const result = await uploadToCloudinary(req.file.path, {
       type: 'videos',
-      publicId: `exercise_${exercise._id}`,
+      publicId: `template_${template._id}`,
     });
     fs.unlink(req.file.path, () => {});
 
     const video = await ExerciseVideo.findOneAndUpdate(
-      { exercise: exercise._id },
+      { exercise: template._id },
       {
-        exercise: exercise._id,
+        exercise: template._id,
         videoUrl: result.secure_url,
         videoPublicId: result.public_id,
         durationSeconds: Math.round(result.duration || 0),
@@ -143,18 +173,18 @@ const uploadExerciseVideo = async (req, res) => {
 // GET /api/exercises/:id/auto-overload -> Get auto-progression settings
 const getAutoOverloadSettings = async (req, res) => {
   try {
-    const exercise = await Exercise.findById(req.params.id);
-    if (!exercise) return res.status(404).json({ message: 'Exercise not found' });
+    const template = await resolveTemplate(req.params.id);
+    if (!template) return res.status(404).json({ message: 'Exercise not found' });
 
     res.json({
-      autoProgressiveEnabled: exercise.autoProgressiveEnabled,
-      increaseIntervalWeeks: exercise.increaseIntervalWeeks,
-      increaseWeightKg: exercise.increaseWeightKg,
-      applyToAllExercises: exercise.applyToAllExercises,
-      startDate: exercise.startDate,
-      nextIncreaseDate: exercise.nextIncreaseDate,
-      lastIncreaseDate: exercise.lastIncreaseDate,
-      currentWeight: exercise.currentWeight,
+      templateId: template._id,
+      autoProgressiveEnabled: template.autoProgressiveEnabled,
+      increaseIntervalWeeks: template.increaseIntervalWeeks,
+      increaseWeightKg: template.increaseWeightKg,
+      startDate: template.startDate,
+      nextIncreaseDate: template.nextIncreaseDate,
+      lastIncreaseDate: template.lastIncreaseDate,
+      currentWeight: template.currentWeight,
     });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch overload settings', error: err.message });
@@ -172,8 +202,8 @@ const updateAutoOverloadSettings = async (req, res) => {
       currentWeight,
     } = req.body;
 
-    const exercise = await Exercise.findById(req.params.id);
-    if (!exercise) return res.status(404).json({ message: 'Exercise not found' });
+    const template = await resolveTemplate(req.params.id);
+    if (!template) return res.status(404).json({ message: 'Exercise not found' });
 
     const now = new Date();
     const intervalWeeks = parseInt(increaseIntervalWeeks, 10) || 3;
@@ -193,7 +223,6 @@ const updateAutoOverloadSettings = async (req, res) => {
       autoProgressiveEnabled: !!autoProgressiveEnabled,
       increaseIntervalWeeks: intervalWeeks,
       increaseWeightKg: weightKg,
-      applyToAllExercises: !!applyToAllExercises,
       startDate,
       nextIncreaseDate,
       lastIncreaseDate,
@@ -204,46 +233,47 @@ const updateAutoOverloadSettings = async (req, res) => {
     }
 
     if (applyToAllExercises) {
-      await Exercise.updateMany({}, { $set: payload });
-      const updated = await Exercise.findById(req.params.id);
-      return res.json({ message: 'Auto-overload settings applied to all exercises', exercise: updated });
+      await ExerciseTemplate.updateMany({}, { $set: payload });
+      const updated = await ExerciseTemplate.findById(template._id);
+      return res.json({ message: 'Auto-overload settings applied to all exercise templates', exercise: updated });
     } else {
-      Object.assign(exercise, payload);
-      await exercise.save();
-      return res.json({ message: 'Auto-overload settings updated', exercise });
+      Object.assign(template, payload);
+      await template.save();
+      return res.json({ message: 'Auto-overload settings updated', exercise: template });
     }
   } catch (err) {
     res.status(500).json({ message: 'Failed to update overload settings', error: err.message });
   }
 };
 
-// POST /api/exercises/check-auto-overload -> Check and apply due weight increases
+// POST /api/exercises/check-auto-overload -> Check and apply due weight increases on ExerciseTemplates
 const checkAutoOverloadProgressions = async (req, res) => {
   try {
-    const exercises = await Exercise.find({ autoProgressiveEnabled: true });
+    const templates = await ExerciseTemplate.find({ autoProgressiveEnabled: true });
     const now = new Date();
     const applied = [];
 
-    for (const ex of exercises) {
-      if (ex.nextIncreaseDate && new Date(ex.nextIncreaseDate) <= now) {
-        const intervalMs = ex.increaseIntervalWeeks * 7 * 24 * 60 * 60 * 1000;
-        const nextTime = new Date(ex.nextIncreaseDate).getTime();
+    for (const tpl of templates) {
+      if (tpl.nextIncreaseDate && new Date(tpl.nextIncreaseDate) <= now) {
+        const intervalMs = tpl.increaseIntervalWeeks * 7 * 24 * 60 * 60 * 1000;
+        const nextTime = new Date(tpl.nextIncreaseDate).getTime();
         const elapsedMs = now.getTime() - nextTime + intervalMs;
         const numIntervals = Math.max(1, Math.floor(elapsedMs / intervalMs));
 
-        const oldWeight = ex.currentWeight || 0;
-        const newWeight = oldWeight + ex.increaseWeightKg * numIntervals;
+        const oldWeight = tpl.currentWeight || 0;
+        const newWeight = oldWeight + tpl.increaseWeightKg * numIntervals;
 
-        ex.currentWeight = newWeight;
-        ex.lastIncreaseDate = now;
-        ex.nextIncreaseDate = new Date(nextTime + numIntervals * intervalMs);
-        await ex.save();
+        tpl.currentWeight = newWeight;
+        tpl.lastIncreaseDate = now;
+        tpl.nextIncreaseDate = new Date(nextTime + numIntervals * intervalMs);
+        await tpl.save();
 
         applied.push({
-          exerciseId: ex._id,
-          exerciseName: ex.name,
+          templateId: tpl._id,
+          exerciseName: tpl.name,
           oldWeight,
           newWeight,
+          nextIncreaseDate: tpl.nextIncreaseDate,
         });
       }
     }

@@ -49,10 +49,44 @@ const getDayByNumber = async (req, res) => {
       });
     }
 
-    const exercises = await Exercise.find({ workoutDay: day._id }).sort({ order: 1 });
+    const exercises = await Exercise.find({ workoutDay: day._id })
+      .populate('template')
+      .sort({ order: 1 });
+
+    const formattedExercises = exercises.map((ex) => {
+      const tpl = ex.template || {};
+      return {
+        _id: ex._id,
+        templateId: tpl._id || ex._id,
+        workoutDay: ex.workoutDay,
+        order: ex.order,
+        sets: ex.sets,
+        repsRange: ex.repsRange,
+        defaultRestSeconds: ex.defaultRestSeconds,
+        name: tpl.name || 'Exercise',
+        category: tpl.category || '',
+        muscleGroup: tpl.muscleGroup || tpl.category || '',
+        targetMuscle: tpl.targetMuscle || '',
+        imageUrl: tpl.imageUrl || '',
+        benefits: tpl.benefits || [],
+        tips: tpl.tips || [],
+        commonMistakes: tpl.commonMistakes || [],
+
+        // Shared Progressive Overload Configuration from ExerciseTemplate
+        autoProgressiveEnabled: !!tpl.autoProgressiveEnabled,
+        increaseIntervalWeeks: tpl.increaseIntervalWeeks || 3,
+        increaseWeightKg: tpl.increaseWeightKg || 2.5,
+        startDate: tpl.startDate || null,
+        nextIncreaseDate: tpl.nextIncreaseDate || null,
+        lastIncreaseDate: tpl.lastIncreaseDate || null,
+        currentWeight: tpl.currentWeight || 0,
+        updatedAt: tpl.updatedAt || ex.updatedAt,
+      };
+    });
+
     res.json({
       day: { id: day._id, planCode: day.planCode, dayNumber: day.dayNumber, name: day.name, isRestDay: false },
-      exercises,
+      exercises: formattedExercises,
     });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch workout day', error: err.message });

@@ -3,7 +3,29 @@ const mongoose = require('mongoose');
 const connectDB = require('../config/db');
 const WorkoutDay = require('../models/WorkoutDay');
 const Exercise = require('../models/Exercise');
+const ExerciseTemplate = require('../models/ExerciseTemplate');
 const { workoutDaysPlan1, workoutDaysPlan2, getExerciseImageUrl } = require('./seedData');
+
+const templateMap = {};
+
+const getOrCreateTemplate = async (name, category) => {
+  if (templateMap[name]) return templateMap[name];
+  let template = await ExerciseTemplate.findOne({ name });
+  if (!template) {
+    template = await ExerciseTemplate.create({
+      name,
+      category,
+      muscleGroup: category,
+      targetMuscle: '',
+      imageUrl: getExerciseImageUrl(name),
+      benefits: [],
+      tips: [],
+      commonMistakes: [],
+    });
+  }
+  templateMap[name] = template;
+  return template;
+};
 
 const seedPlan = async (planCode, workoutDays) => {
   for (const dayData of workoutDays) {
@@ -19,19 +41,13 @@ const seedPlan = async (planCode, workoutDays) => {
 
     let order = 1;
     for (const ex of dayData.exercises) {
+      const template = await getOrCreateTemplate(ex.name, ex.category);
       await Exercise.create({
         workoutDay: day._id,
+        template: template._id,
         order: order++,
-        name: ex.name,
-        category: ex.category,
-        muscleGroup: ex.category,
-        targetMuscle: '',
         sets: ex.sets,
         repsRange: ex.repsRange,
-        imageUrl: getExerciseImageUrl(ex.name),
-        benefits: [],
-        tips: [],
-        commonMistakes: [],
       });
     }
 
@@ -42,8 +58,9 @@ const seedPlan = async (planCode, workoutDays) => {
 const run = async () => {
   await connectDB();
 
-  console.log('Clearing existing WorkoutDay/Exercise collections...');
+  console.log('Clearing existing WorkoutDay, Exercise, and ExerciseTemplate collections...');
   await Exercise.deleteMany({});
+  await ExerciseTemplate.deleteMany({});
   await WorkoutDay.deleteMany({});
 
   try {
