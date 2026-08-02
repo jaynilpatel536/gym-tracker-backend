@@ -121,19 +121,29 @@ const getExerciseProgressChartData = async (req, res) => {
 
       timeline.push({
         date: log.date,
+        formattedDate: new Date(log.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+        maxWeight: maxWeightInSession,
         maxWeightKg: maxWeightInSession,
-        totalVolumeKg: log.sets.reduce((sum, s) => sum + (parseFloat(s.weightKg) || 0) * (parseInt(s.reps, 10) || 0), 0),
-        isPR: log.isPersonalRecord,
+        totalVolume: log.sets.reduce((sum, s) => sum + (parseFloat(s.weightKg) || 0) * (parseInt(s.reps, 10) || 0), 0),
+        isPersonalRecord: !!log.isPersonalRecord,
       });
     });
 
+    const currentWeight = template.currentWeight || 0;
+    const netGain = currentWeight > 0 && startingWeight > 0 ? currentWeight - startingWeight : 0;
+
     res.json({
-      exerciseName: template.name,
-      muscleGroup: template.muscleGroup || template.category,
-      currentWeightKg: template.currentWeight || 0,
-      startingWeightKg: startingWeight,
-      personalRecordKg: maxPersonalRecordKg,
-      totalSessions: timeline.length,
+      exercise: {
+        name: template.name,
+        muscleGroup: template.muscleGroup || template.category,
+      },
+      stats: {
+        startingWeight,
+        currentWeight,
+        personalRecord: maxPersonalRecordKg,
+        netGain: parseFloat(netGain.toFixed(1)),
+        totalSessions: timeline.length,
+      },
       timeline,
     });
   } catch (err) {
