@@ -49,31 +49,35 @@ const signup = async (req, res) => {
       isAdmin: isSuperAdmin,
     });
 
-    if (isSuperAdmin) {
-      await AuditLog.create({
-        action: 'SUPER_ADMIN_REGISTERED',
-        targetUser: user._id,
-        details: `Super Admin registered (${user.email})`,
-        ipAddress: req.ip,
-        userAgent: req.get('user-agent') || '',
-      });
-    } else {
-      // Create admin notification
-      await Notification.create({
-        recipientRole: 'ADMIN',
-        type: NOTIFICATION_TYPES.NEW_REGISTRATION,
-        title: 'New Account Approval Request',
-        message: `${user.name} (${user.email}) has registered and is waiting for account approval.`,
-        relatedUser: user._id,
-      });
+    try {
+      if (isSuperAdmin) {
+        await AuditLog.create({
+          action: 'SUPER_ADMIN_REGISTERED',
+          targetUser: user._id,
+          details: `Super Admin registered (${user.email})`,
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent') || '',
+        });
+      } else {
+        // Create admin notification
+        await Notification.create({
+          recipientRole: 'ADMIN',
+          type: NOTIFICATION_TYPES.NEW_REGISTRATION,
+          title: 'New Account Approval Request',
+          message: `${user.name} (${user.email}) has registered and is waiting for account approval.`,
+          relatedUser: user._id,
+        });
 
-      await AuditLog.create({
-        action: 'USER_REGISTERED',
-        targetUser: user._id,
-        details: `New registration request submitted by ${user.name}`,
-        ipAddress: req.ip,
-        userAgent: req.get('user-agent') || '',
-      });
+        await AuditLog.create({
+          action: 'USER_REGISTERED',
+          targetUser: user._id,
+          details: `New registration request submitted by ${user.name}`,
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent') || '',
+        });
+      }
+    } catch (auditErr) {
+      console.warn('[signup AuditLog Warning]:', auditErr.message);
     }
 
     // NEVER return token on signup. Force user to log in after approval.
@@ -157,14 +161,18 @@ const login = async (req, res) => {
 
     const token = generateToken(user._id, rememberMe);
 
-    await AuditLog.create({
-      action: 'USER_LOGIN',
-      performedBy: user._id,
-      targetUser: user._id,
-      details: `User ${user.email} logged in successfully`,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || '',
-    });
+    try {
+      await AuditLog.create({
+        action: 'USER_LOGIN',
+        performedBy: user._id,
+        targetUser: user._id,
+        details: `User ${user.email} logged in successfully`,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || '',
+      });
+    } catch (auditErr) {
+      console.warn('[login AuditLog Warning]:', auditErr.message);
+    }
 
     res.json({
       user: {

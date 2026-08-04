@@ -10,6 +10,8 @@ const auditLogSchema = new mongoose.Schema(
         'USER_APPROVED',
         'USER_REJECTED',
         'USER_SUSPENDED',
+        'USER_LOGIN',
+        'SUPER_ADMIN_REGISTERED',
       ],
       required: true,
       index: true,
