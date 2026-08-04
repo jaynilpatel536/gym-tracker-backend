@@ -15,7 +15,12 @@ const router = express.Router();
 // All routes require authentication & admin role (`protect` + `admin`)
 router.use(protect, admin);
 
-// User approval / rejection / suspension routes (accepts PUT, POST, etc.)
+// Unambiguous User Management Endpoints
+router.all('/approve-user/:id', approveUser);
+router.all('/reject-user/:id', rejectUser);
+router.all('/suspend-user/:id', suspendUser);
+
+// Legacy Path Pattern Support
 router.all('/users/:id/approve', approveUser);
 router.all('/users/approve/:id', approveUser);
 router.all('/users/:id/reject', rejectUser);
