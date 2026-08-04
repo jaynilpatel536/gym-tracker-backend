@@ -10,12 +10,31 @@ const getUsers = async (req, res) => {
     const limitNum = parseInt(limit, 10) || 20;
 
     const query = {};
-    if (status && ['Pending', 'Approved', 'Rejected', 'Suspended'].includes(status)) {
+    if (status === 'Pending') {
+      query.$or = [
+        { status: 'Pending' },
+        { status: { $exists: false } },
+        { status: null },
+        { status: '' },
+      ];
+    } else if (status && ['Approved', 'Rejected', 'Suspended'].includes(status)) {
       query.status = status;
     }
+
     if (search && search.trim()) {
       const searchRegex = new RegExp(search.trim(), 'i');
-      query.$or = [{ name: searchRegex }, { email: searchRegex }, { phoneNumber: searchRegex }];
+      const searchCondition = [
+        { name: searchRegex },
+        { email: searchRegex },
+        { phoneNumber: searchRegex },
+      ];
+
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, { $or: searchCondition }];
+        delete query.$or;
+      } else {
+        query.$or = searchCondition;
+      }
     }
 
     const [users, total, pendingCount, approvedCount, rejectedCount, suspendedCount] = await Promise.all([
@@ -24,14 +43,25 @@ const getUsers = async (req, res) => {
         .skip((pageNum - 1) * limitNum)
         .limit(limitNum),
       User.countDocuments(query),
-      User.countDocuments({ status: 'Pending' }),
+      User.countDocuments({
+        $or: [{ status: 'Pending' }, { status: { $exists: false } }, { status: null }, { status: '' }],
+      }),
       User.countDocuments({ status: 'Approved' }),
       User.countDocuments({ status: 'Rejected' }),
       User.countDocuments({ status: 'Suspended' }),
     ]);
 
+    // Ensure all returned users have an explicit status field
+    const normalizedUsers = users.map((u) => {
+      const uObj = u.toObject();
+      if (!uObj.status) {
+        uObj.status = uObj.isAdmin ? 'Approved' : 'Pending';
+      }
+      return uObj;
+    });
+
     res.json({
-      users,
+      users: normalizedUsers,
       counts: {
         Pending: pendingCount,
         Approved: approvedCount,
