@@ -1,6 +1,9 @@
 const express = require('express');
 const {
   getAllExercisesUser,
+  getAllMasterExercisesAdmin,
+  createMasterExerciseAdmin,
+  updateMasterExerciseAdmin,
   getExerciseDetails,
   updateExercise,
   deleteExercise,
@@ -10,11 +13,17 @@ const {
   updateAutoOverloadSettings,
   checkAutoOverloadProgressions,
 } = require('../controllers/exerciseController');
-const { protect } = require('../middleware/auth');
+const { protect, admin } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
 const router = express.Router();
 
+// Admin routes
+router.get('/admin/all', protect, admin, getAllMasterExercisesAdmin);
+router.post('/admin/create', protect, admin, createMasterExerciseAdmin);
+router.put('/admin/:id', protect, admin, updateMasterExerciseAdmin);
+
+// Standard protected user routes
 router.get('/', protect, getAllExercisesUser);
 router.post('/check-auto-overload', protect, checkAutoOverloadProgressions);
 router.get('/:id/auto-overload', protect, getAutoOverloadSettings);

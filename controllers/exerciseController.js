@@ -16,6 +16,12 @@ const resolveTemplate = async (id) => {
   return template;
 };
 
+// Helper for normalized duplicate exercise name validation
+const normalizeExerciseName = (name) => {
+  if (!name) return '';
+  return name.trim().replace(/\s+/g, ' ');
+};
+
 // GET /api/exercises -> Fetch all available system exercises/templates
 const getAllExercisesUser = async (req, res) => {
   try {
@@ -23,6 +29,126 @@ const getAllExercisesUser = async (req, res) => {
     res.json({ exercises: templates });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch exercises', error: err.message });
+  }
+};
+
+// GET /api/exercises/admin/all -> Admin fetch all master exercises
+const getAllMasterExercisesAdmin = async (req, res) => {
+  try {
+    const templates = await ExerciseTemplate.find({}).sort({ category: 1, name: 1 });
+    res.json({ exercises: templates });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch master exercises', error: err.message });
+  }
+};
+
+// POST /api/exercises/admin/create -> Admin create a new global master exercise template
+const createMasterExerciseAdmin = async (req, res) => {
+  try {
+    const {
+      name,
+      category,
+      muscleGroup,
+      secondaryMuscleGroup,
+      imageUrl,
+      notes,
+      instructions,
+      sets,
+      repsRange,
+      defaultRestSeconds,
+    } = req.body;
+
+    if (!name || !category || !muscleGroup) {
+      return res.status(400).json({ message: 'Exercise name, category, and primary muscle group are required.' });
+    }
+
+    const normalizedName = normalizeExerciseName(name);
+
+    // Duplicate Exercise Name Validation (Case-insensitive, whitespace-trimmed, multi-space collapsed)
+    const existing = await ExerciseTemplate.findOne({
+      name: new RegExp(`^${normalizedName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i'),
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        message: `An exercise named "${existing.name}" already exists in the master exercise database. Please use a different name or edit the existing exercise.`,
+        isDuplicate: true,
+        existingId: existing._id,
+        existingName: existing.name,
+      });
+    }
+
+    const template = await ExerciseTemplate.create({
+      name: normalizedName,
+      category,
+      muscleGroup: muscleGroup.trim(),
+      secondaryMuscleGroup: secondaryMuscleGroup ? secondaryMuscleGroup.trim() : '',
+      imageUrl: imageUrl || '',
+      notes: notes ? notes.trim() : '',
+      instructions: instructions ? instructions.trim() : '',
+      sets: parseInt(sets, 10) || 3,
+      repsRange: repsRange || '8-12',
+      defaultRestSeconds: parseInt(defaultRestSeconds, 10) || 90,
+    });
+
+    res.status(201).json({ message: `Master exercise "${template.name}" created successfully.`, exercise: template });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to create master exercise', error: err.message });
+  }
+};
+
+// PUT /api/exercises/admin/:id -> Admin edit existing master exercise template
+const updateMasterExerciseAdmin = async (req, res) => {
+  try {
+    const template = await ExerciseTemplate.findById(req.params.id);
+    if (!template) return res.status(404).json({ message: 'Master exercise template not found' });
+
+    const {
+      name,
+      category,
+      muscleGroup,
+      secondaryMuscleGroup,
+      imageUrl,
+      notes,
+      instructions,
+      sets,
+      repsRange,
+      defaultRestSeconds,
+    } = req.body;
+
+    if (name) {
+      const normalizedName = normalizeExerciseName(name);
+      // Duplicate Name Validation (Ignoring current exercise _id)
+      const existing = await ExerciseTemplate.findOne({
+        _id: { $ne: template._id },
+        name: new RegExp(`^${normalizedName.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}$`, 'i'),
+      });
+
+      if (existing) {
+        return res.status(400).json({
+          message: `An exercise named "${existing.name}" already exists in the master exercise database. Please use a different name.`,
+          isDuplicate: true,
+          existingId: existing._id,
+          existingName: existing.name,
+        });
+      }
+      template.name = normalizedName;
+    }
+
+    if (category) template.category = category;
+    if (muscleGroup) template.muscleGroup = muscleGroup.trim();
+    if (secondaryMuscleGroup !== undefined) template.secondaryMuscleGroup = secondaryMuscleGroup.trim();
+    if (imageUrl !== undefined) template.imageUrl = imageUrl.trim();
+    if (notes !== undefined) template.notes = notes.trim();
+    if (instructions !== undefined) template.instructions = instructions.trim();
+    if (sets !== undefined) template.sets = parseInt(sets, 10) || 3;
+    if (repsRange !== undefined) template.repsRange = repsRange;
+    if (defaultRestSeconds !== undefined) template.defaultRestSeconds = parseInt(defaultRestSeconds, 10) || 90;
+
+    await template.save();
+    res.json({ message: `Master exercise "${template.name}" updated successfully.`, exercise: template });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to update master exercise', error: err.message });
   }
 };
 
@@ -47,8 +173,14 @@ const getExerciseDetails = async (req, res) => {
       name: template.name,
       category: template.category,
       muscleGroup: template.muscleGroup,
+      secondaryMuscleGroup: template.secondaryMuscleGroup || '',
       targetMuscle: template.targetMuscle,
       imageUrl: template.imageUrl,
+      notes: template.notes || '',
+      instructions: template.instructions || '',
+      sets: template.sets || 3,
+      repsRange: template.repsRange || '8-12',
+      defaultRestSeconds: template.defaultRestSeconds || 90,
       benefits: template.benefits,
       tips: template.tips,
       commonMistakes: template.commonMistakes,
@@ -80,11 +212,17 @@ const updateExercise = async (req, res) => {
       'name',
       'category',
       'muscleGroup',
+      'secondaryMuscleGroup',
       'targetMuscle',
       'benefits',
       'tips',
       'commonMistakes',
       'imageUrl',
+      'notes',
+      'instructions',
+      'sets',
+      'repsRange',
+      'defaultRestSeconds',
     ];
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) template[field] = req.body[field];
@@ -286,6 +424,9 @@ const checkAutoOverloadProgressions = async (req, res) => {
 
 module.exports = {
   getAllExercisesUser,
+  getAllMasterExercisesAdmin,
+  createMasterExerciseAdmin,
+  updateMasterExerciseAdmin,
   getExerciseDetails,
   updateExercise,
   deleteExercise,
