@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   createPersonalExercise,
+  updatePersonalExercise,
   getUserPersonalExercises,
   getPendingPersonalExercises,
   approvePersonalExercise,
@@ -15,6 +16,7 @@ router.use(protect);
 
 router.post('/', createPersonalExercise);
 router.get('/me', getUserPersonalExercises);
+router.put('/:id', updatePersonalExercise);
 router.delete('/:id', deletePersonalExercise);
 
 // Admin-only review endpoints

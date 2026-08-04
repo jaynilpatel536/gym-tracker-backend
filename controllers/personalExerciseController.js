@@ -57,6 +57,43 @@ const createPersonalExercise = async (req, res) => {
   }
 };
 
+// PUT /api/personal-exercises/:id -> Edit user's own personal exercise (ONLY if Pending or Rejected)
+const updatePersonalExercise = async (req, res) => {
+  try {
+    const { name, category, muscleGroup, imageUrl, notes, instructions } = req.body;
+    const personalExercise = await PersonalExercise.findOne({
+      _id: req.params.id,
+      createdBy: req.user._id,
+    });
+
+    if (!personalExercise) {
+      return res.status(404).json({ message: 'Personal exercise not found' });
+    }
+
+    if (personalExercise.reviewStatus === 'Approved') {
+      return res.status(403).json({
+        message: 'This exercise has already been approved by Admin and promoted to the global Master database. Approved exercises can no longer be edited by original creator.',
+      });
+    }
+
+    if (name) personalExercise.name = name.trim();
+    if (category) personalExercise.category = category;
+    if (muscleGroup) personalExercise.muscleGroup = muscleGroup.trim();
+    if (imageUrl !== undefined) personalExercise.imageUrl = imageUrl.trim();
+    if (notes !== undefined) personalExercise.notes = notes.trim();
+    if (instructions !== undefined) personalExercise.instructions = instructions.trim();
+
+    await personalExercise.save();
+
+    res.json({
+      message: 'Personal exercise updated successfully.',
+      personalExercise,
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to update personal exercise', error: err.message });
+  }
+};
+
 // GET /api/personal-exercises/me -> Get personal exercises created by current user
 const getUserPersonalExercises = async (req, res) => {
   try {
@@ -175,10 +212,10 @@ const rejectPersonalExercise = async (req, res) => {
   }
 };
 
-// DELETE /api/personal-exercises/:id -> Delete user's own personal exercise
+// DELETE /api/personal-exercises/:id -> Delete user's own personal exercise (ONLY if Pending or Rejected)
 const deletePersonalExercise = async (req, res) => {
   try {
-    const personalExercise = await PersonalExercise.findOneAndDelete({
+    const personalExercise = await PersonalExercise.findOne({
       _id: req.params.id,
       createdBy: req.user._id,
     });
@@ -186,6 +223,14 @@ const deletePersonalExercise = async (req, res) => {
     if (!personalExercise) {
       return res.status(404).json({ message: 'Personal exercise not found or access denied' });
     }
+
+    if (personalExercise.reviewStatus === 'Approved') {
+      return res.status(403).json({
+        message: 'This exercise has been approved and promoted to the global Master database. Approved exercises cannot be deleted.',
+      });
+    }
+
+    await PersonalExercise.deleteOne({ _id: personalExercise._id });
 
     res.json({ message: 'Personal exercise deleted successfully' });
   } catch (err) {
@@ -195,6 +240,7 @@ const deletePersonalExercise = async (req, res) => {
 
 module.exports = {
   createPersonalExercise,
+  updatePersonalExercise,
   getUserPersonalExercises,
   getPendingPersonalExercises,
   approvePersonalExercise,
