@@ -7,7 +7,8 @@ const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'progressfit.app@gma
 
 /**
  * POST /api/auth/signup
- * Registers a new user with Pending status or re-submits a previously rejected request
+ * Registers a new user with Pending status or re-submits a previously rejected request.
+ * NEVER returns a JWT token or creates an authenticated session during signup.
  */
 const signup = async (req, res) => {
   try {
@@ -34,7 +35,7 @@ const signup = async (req, res) => {
       }
 
       if (existingUser.status === 'Approved') {
-        return res.status(400).json({ message: 'An account with this email address already exists' });
+        return res.status(400).json({ message: 'An account with this email address already exists.' });
       }
 
       if (existingUser.status === 'Suspended') {
@@ -73,12 +74,14 @@ const signup = async (req, res) => {
             ipAddress: req.ip,
             userAgent: req.get('user-agent') || '',
           });
-
-          return res.status(201).json({
-            message: 'Registration submitted successfully. Your account is waiting for administrator approval.',
-            status: 'Pending',
-          });
         }
+
+        return res.status(201).json({
+          message: isSuperAdmin
+            ? 'Super Admin account created. Please log in.'
+            : 'Registration submitted successfully. Your account is waiting for administrator approval.',
+          status: existingUser.status,
+        });
       }
     }
 
@@ -92,41 +95,31 @@ const signup = async (req, res) => {
       isAdmin: isSuperAdmin,
     });
 
-    if (isSuperAdmin) {
-      const token = generateToken(user._id, true);
-      return res.status(201).json({
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          status: user.status,
-          isAdmin: true,
-          createdAt: user.createdAt,
-        },
-        token,
+    if (!isSuperAdmin) {
+      // Create Admin Notification & Audit Log for non-admin signups
+      await Notification.create({
+        recipientRole: 'ADMIN',
+        type: NOTIFICATION_TYPES.NEW_REGISTRATION,
+        title: '🔔 New User Registration Request',
+        message: `${user.name} (${user.email}) has requested account access.`,
+        relatedUser: user._id,
+      });
+
+      await AuditLog.create({
+        action: 'USER_REGISTERED',
+        targetUser: user._id,
+        details: `New registration request submitted by ${user.name}`,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || '',
       });
     }
 
-    // Create Admin Notification & Audit Log for non-admin signups
-    await Notification.create({
-      recipientRole: 'ADMIN',
-      type: NOTIFICATION_TYPES.NEW_REGISTRATION,
-      title: '🔔 New User Registration Request',
-      message: `${user.name} (${user.email}) has requested account access.`,
-      relatedUser: user._id,
-    });
-
-    await AuditLog.create({
-      action: 'USER_REGISTERED',
-      targetUser: user._id,
-      details: `New registration request submitted by ${user.name}`,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || '',
-    });
-
+    // NEVER return token on signup. Force user to log in after approval.
     res.status(201).json({
-      message: 'Registration submitted successfully. Your account is waiting for administrator approval.',
-      status: 'Pending',
+      message: isSuperAdmin
+        ? 'Super Admin account created successfully. Please log in.'
+        : 'Registration submitted successfully. Your account is waiting for administrator approval.',
+      status: user.status,
     });
   } catch (err) {
     console.error('[signup Error]:', err.message);
@@ -136,7 +129,7 @@ const signup = async (req, res) => {
 
 /**
  * POST /api/auth/login
- * Authenticates approved users
+ * Authenticates ONLY Approved users
  */
 const login = async (req, res) => {
   try {
@@ -166,17 +159,18 @@ const login = async (req, res) => {
       await user.save();
     }
 
-    // Verify Account Status
+    // Verify Account Status — Block Non-Approved Accounts
     if (user.status === 'Pending') {
       return res.status(403).json({
-        message: 'Your account is waiting for administrator approval.',
+        message: 'Your account is waiting for administrator approval. You will be able to log in after your account has been approved.',
         status: 'Pending',
       });
     }
 
     if (user.status === 'Rejected') {
+      const reasonMsg = user.rejectionReason ? ` Rejection note: ${user.rejectionReason}` : '';
       return res.status(403).json({
-        message: user.rejectionReason || 'Your registration request was rejected by the administrator.',
+        message: `Your registration request was rejected.${reasonMsg} Please contact the administrator.`,
         status: 'Rejected',
       });
     }
@@ -188,6 +182,14 @@ const login = async (req, res) => {
       });
     }
 
+    if (user.status !== 'Approved') {
+      return res.status(403).json({
+        message: 'Access denied. Your account has not been approved.',
+        status: user.status,
+      });
+    }
+
+    // Issue JWT Token ONLY for Approved Users
     const token = generateToken(user._id, !!rememberMe);
 
     res.json({
@@ -216,6 +218,11 @@ const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (user.status !== 'Approved') {
+      return res.status(403).json({ message: 'Account is not approved', status: user.status });
+    }
+
     res.json({ user });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch user', error: err.message });
