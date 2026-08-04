@@ -12,6 +12,7 @@ const progressiveOverloadRoutes = require('./routes/progressiveOverloadRoutes');
 const userOverloadRoutes = require('./routes/userOverloadRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const customPlanRoutes = require('./routes/customPlanRoutes');
+const personalExerciseRoutes = require('./routes/personalExerciseRoutes');
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use('/api/progressive-overload', progressiveOverloadRoutes);
 app.use('/api/user-overload', userOverloadRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/custom-plans', customPlanRoutes);
+app.use('/api/personal-exercises', personalExerciseRoutes);
 
 // 404 handler
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));

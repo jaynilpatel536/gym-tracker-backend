@@ -17,12 +17,18 @@ const customPlanSchema = new mongoose.Schema(
     },
     durationWeeks: { type: Number, default: 4 },
     isActive: { type: Boolean, default: false },
+
+    // User-Specific Built-In Plan Copy Support (Default Plan 1 & Plan 2)
+    planCode: { type: String, default: null, index: true }, // 'plan1' or 'plan2'
+    isBuiltInCopy: { type: Boolean, default: false },
+
     days: [customPlanDaySchema],
   },
   { timestamps: true }
 );
 
-// Compound index for user & active custom plan queries
+// Compound indexes for fast active plan and built-in plan copy lookups
 customPlanSchema.index({ user: 1, isActive: 1 });
+customPlanSchema.index({ user: 1, planCode: 1 });
 
 module.exports = mongoose.model('CustomPlan', customPlanSchema);
