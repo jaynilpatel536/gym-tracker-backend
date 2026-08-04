@@ -1,15 +1,17 @@
 const User = require('../models/User');
+const { Notification, NOTIFICATION_TYPES } = require('../models/Notification');
+const AuditLog = require('../models/AuditLog');
 const generateToken = require('../utils/generateToken');
 
-const ADMIN_EMAIL = 'progressfit.app@gmail.com';
+const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'progressfit.app@gmail.com').trim().toLowerCase();
 
 /**
  * POST /api/auth/signup
- * Registers a new user with Name, Email, and Password
+ * Registers a new user with Pending status or re-submits a previously rejected request
  */
 const signup = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, phoneNumber } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Name, email, and password are required' });
     }
@@ -19,32 +21,112 @@ const signup = async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const existingUser = await User.findOne({ email: normalizedEmail });
+    const isSuperAdmin = normalizedEmail === SUPER_ADMIN_EMAIL;
+
+    const existingUser = await User.findOne({ email: normalizedEmail }).select('+password');
 
     if (existingUser) {
-      return res.status(400).json({ message: 'An account with this email address already exists' });
+      if (existingUser.status === 'Pending') {
+        return res.status(400).json({
+          message: 'Your registration request is already waiting for administrator approval.',
+          status: 'Pending',
+        });
+      }
+
+      if (existingUser.status === 'Approved') {
+        return res.status(400).json({ message: 'An account with this email address already exists' });
+      }
+
+      if (existingUser.status === 'Suspended') {
+        return res.status(403).json({
+          message: 'Your account has been suspended. Please contact the administrator.',
+          status: 'Suspended',
+        });
+      }
+
+      // Re-application for REJECTED user: Update existing record, reset status to Pending
+      if (existingUser.status === 'Rejected') {
+        existingUser.name = name.trim();
+        existingUser.password = password;
+        if (phoneNumber) existingUser.phoneNumber = phoneNumber.trim();
+        existingUser.status = isSuperAdmin ? 'Approved' : 'Pending';
+        existingUser.isAdmin = isSuperAdmin;
+        existingUser.rejectionReason = '';
+        existingUser.statusChangedAt = new Date();
+        await existingUser.save();
+
+        if (!isSuperAdmin) {
+          // Create Notification for Admin
+          await Notification.create({
+            recipientRole: 'ADMIN',
+            type: NOTIFICATION_TYPES.NEW_REGISTRATION,
+            title: '🔔 New User Registration Request (Re-application)',
+            message: `${existingUser.name} (${existingUser.email}) has re-applied for account access.`,
+            relatedUser: existingUser._id,
+          });
+
+          // Audit log
+          await AuditLog.create({
+            action: 'USER_RE_REGISTERED',
+            targetUser: existingUser._id,
+            details: `Rejected user re-applied for registration: ${existingUser.name}`,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent') || '',
+          });
+
+          return res.status(201).json({
+            message: 'Registration submitted successfully. Your account is waiting for administrator approval.',
+            status: 'Pending',
+          });
+        }
+      }
     }
 
-    const isAdminUser = normalizedEmail === ADMIN_EMAIL;
-
+    // New user registration
     const user = await User.create({
       name: name.trim(),
       email: normalizedEmail,
       password: password,
-      isAdmin: isAdminUser,
+      phoneNumber: phoneNumber ? phoneNumber.trim() : '',
+      status: isSuperAdmin ? 'Approved' : 'Pending',
+      isAdmin: isSuperAdmin,
     });
 
-    const token = generateToken(user._id, true);
+    if (isSuperAdmin) {
+      const token = generateToken(user._id, true);
+      return res.status(201).json({
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          status: user.status,
+          isAdmin: true,
+          createdAt: user.createdAt,
+        },
+        token,
+      });
+    }
+
+    // Create Admin Notification & Audit Log for non-admin signups
+    await Notification.create({
+      recipientRole: 'ADMIN',
+      type: NOTIFICATION_TYPES.NEW_REGISTRATION,
+      title: '🔔 New User Registration Request',
+      message: `${user.name} (${user.email}) has requested account access.`,
+      relatedUser: user._id,
+    });
+
+    await AuditLog.create({
+      action: 'USER_REGISTERED',
+      targetUser: user._id,
+      details: `New registration request submitted by ${user.name}`,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent') || '',
+    });
 
     res.status(201).json({
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        isAdmin: user.isAdmin,
-        createdAt: user.createdAt,
-      },
-      token,
+      message: 'Registration submitted successfully. Your account is waiting for administrator approval.',
+      status: 'Pending',
     });
   } catch (err) {
     console.error('[signup Error]:', err.message);
@@ -54,7 +136,7 @@ const signup = async (req, res) => {
 
 /**
  * POST /api/auth/login
- * Authenticates user with Email and Password
+ * Authenticates approved users
  */
 const login = async (req, res) => {
   try {
@@ -64,12 +146,12 @@ const login = async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    const isSuperAdmin = normalizedEmail === SUPER_ADMIN_EMAIL;
+
     const user = await User.findOne({ email: normalizedEmail }).select('+password');
 
     if (!user || !user.password) {
-      return res.status(400).json({
-        message: 'Invalid email address or password. If you registered previously, please click Forgot Password to set your password.',
-      });
+      return res.status(400).json({ message: 'Invalid email address or password' });
     }
 
     const isMatch = await user.comparePassword(password);
@@ -77,10 +159,33 @@ const login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid email address or password' });
     }
 
-    // Auto-grant admin for progressfit.app@gmail.com
-    if (normalizedEmail === ADMIN_EMAIL && !user.isAdmin) {
+    // Auto-grant Super Admin
+    if (isSuperAdmin && (!user.isAdmin || user.status !== 'Approved')) {
       user.isAdmin = true;
+      user.status = 'Approved';
       await user.save();
+    }
+
+    // Verify Account Status
+    if (user.status === 'Pending') {
+      return res.status(403).json({
+        message: 'Your account is waiting for administrator approval.',
+        status: 'Pending',
+      });
+    }
+
+    if (user.status === 'Rejected') {
+      return res.status(403).json({
+        message: user.rejectionReason || 'Your registration request was rejected by the administrator.',
+        status: 'Rejected',
+      });
+    }
+
+    if (user.status === 'Suspended') {
+      return res.status(403).json({
+        message: 'Your account has been suspended. Please contact the administrator.',
+        status: 'Suspended',
+      });
     }
 
     const token = generateToken(user._id, !!rememberMe);
@@ -90,6 +195,8 @@ const login = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        phoneNumber: user.phoneNumber,
+        status: user.status,
         isAdmin: !!user.isAdmin,
         createdAt: user.createdAt,
       },
@@ -98,38 +205,6 @@ const login = async (req, res) => {
   } catch (err) {
     console.error('[login Error]:', err.message);
     res.status(500).json({ message: 'Failed to log in', error: err.message });
-  }
-};
-
-/**
- * POST /api/auth/reset-password
- * Resets user password using registered Email Address
- */
-const resetPassword = async (req, res) => {
-  try {
-    const { email, newPassword } = req.body;
-    if (!email || !newPassword) {
-      return res.status(400).json({ message: 'Email address and new password are required' });
-    }
-
-    if (newPassword.length < 6) {
-      return res.status(400).json({ message: 'New password must be at least 6 characters long' });
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
-    const user = await User.findOne({ email: normalizedEmail });
-
-    if (!user) {
-      return res.status(404).json({ message: 'No account found with this email address' });
-    }
-
-    user.password = newPassword;
-    await user.save();
-
-    res.json({ message: 'Password reset successfully! You can now log in with your new password.' });
-  } catch (err) {
-    console.error('[resetPassword Error]:', err.message);
-    res.status(500).json({ message: 'Failed to reset password', error: err.message });
   }
 };
 
@@ -150,6 +225,5 @@ const getMe = async (req, res) => {
 module.exports = {
   signup,
   login,
-  resetPassword,
   getMe,
 };

@@ -9,6 +9,7 @@ const workoutDayRoutes = require('./routes/workoutDayRoutes');
 const exerciseRoutes = require('./routes/exerciseRoutes');
 const workoutHistoryRoutes = require('./routes/workoutHistoryRoutes');
 const progressiveOverloadRoutes = require('./routes/progressiveOverloadRoutes');
+const userOverloadRoutes = require('./routes/userOverloadRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const customPlanRoutes = require('./routes/customPlanRoutes');
 
@@ -27,6 +28,7 @@ app.use('/api/workout-days', workoutDayRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/workout-history', workoutHistoryRoutes);
 app.use('/api/progressive-overload', progressiveOverloadRoutes);
+app.use('/api/user-overload', userOverloadRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/custom-plans', customPlanRoutes);
 
