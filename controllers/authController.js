@@ -1,18 +1,26 @@
+const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { Notification, NOTIFICATION_TYPES } = require('../models/Notification');
 const AuditLog = require('../models/AuditLog');
-const generateToken = require('../utils/generateToken');
 
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'progressfit.app@gmail.com').trim().toLowerCase();
 
 /**
+ * Generate JWT token for approved user sessions
+ */
+const generateToken = (userId, rememberMe = true) => {
+  const expiresIn = rememberMe ? '365d' : '24h';
+  return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn });
+};
+
+/**
  * POST /api/auth/signup
- * Registers a new user with Pending status or re-submits a previously rejected request.
- * NEVER returns a JWT token or creates an authenticated session during signup.
+ * Always creates non-admin accounts as 'Pending'
  */
 const signup = async (req, res) => {
   try {
     const { name, email, password, phoneNumber } = req.body;
+
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Name, email, and password are required' });
     }
@@ -22,86 +30,40 @@ const signup = async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const isSuperAdmin = normalizedEmail === SUPER_ADMIN_EMAIL;
-
-    const existingUser = await User.findOne({ email: normalizedEmail }).select('+password');
+    const existingUser = await User.findOne({ email: normalizedEmail });
 
     if (existingUser) {
-      if (existingUser.status === 'Pending') {
-        return res.status(400).json({
-          message: 'Your registration request is already waiting for administrator approval.',
-          status: 'Pending',
-        });
-      }
-
-      if (existingUser.status === 'Approved') {
-        return res.status(400).json({ message: 'An account with this email address already exists.' });
-      }
-
-      if (existingUser.status === 'Suspended') {
-        return res.status(403).json({
-          message: 'Your account has been suspended. Please contact the administrator.',
-          status: 'Suspended',
-        });
-      }
-
-      // Re-application for REJECTED user: Update existing record, reset status to Pending
-      if (existingUser.status === 'Rejected') {
-        existingUser.name = name.trim();
-        existingUser.password = password;
-        if (phoneNumber) existingUser.phoneNumber = phoneNumber.trim();
-        existingUser.status = isSuperAdmin ? 'Approved' : 'Pending';
-        existingUser.isAdmin = isSuperAdmin;
-        existingUser.rejectionReason = '';
-        existingUser.statusChangedAt = new Date();
-        await existingUser.save();
-
-        if (!isSuperAdmin) {
-          // Create Notification for Admin
-          await Notification.create({
-            recipientRole: 'ADMIN',
-            type: NOTIFICATION_TYPES.NEW_REGISTRATION,
-            title: '🔔 New User Registration Request (Re-application)',
-            message: `${existingUser.name} (${existingUser.email}) has re-applied for account access.`,
-            relatedUser: existingUser._id,
-          });
-
-          // Audit log
-          await AuditLog.create({
-            action: 'USER_RE_REGISTERED',
-            targetUser: existingUser._id,
-            details: `Rejected user re-applied for registration: ${existingUser.name}`,
-            ipAddress: req.ip,
-            userAgent: req.get('user-agent') || '',
-          });
-        }
-
-        return res.status(201).json({
-          message: isSuperAdmin
-            ? 'Super Admin account created. Please log in.'
-            : 'Registration submitted successfully. Your account is waiting for administrator approval.',
-          status: existingUser.status,
-        });
-      }
+      return res.status(400).json({ message: 'An account with this email address already exists.' });
     }
 
-    // New user registration
+    // Auto-approve Super Admin
+    const isSuperAdmin = normalizedEmail === SUPER_ADMIN_EMAIL;
+    const initialStatus = isSuperAdmin ? 'Approved' : 'Pending';
+
     const user = await User.create({
       name: name.trim(),
       email: normalizedEmail,
-      password: password,
+      password,
       phoneNumber: phoneNumber ? phoneNumber.trim() : '',
-      status: isSuperAdmin ? 'Approved' : 'Pending',
+      status: initialStatus,
       isAdmin: isSuperAdmin,
     });
 
-    if (!isSuperAdmin) {
-      // Create Admin Notification & Audit Log for non-admin signups
+    if (isSuperAdmin) {
+      await AuditLog.create({
+        action: 'SUPER_ADMIN_REGISTERED',
+        targetUser: user._id,
+        details: `Super Admin registered (${user.email})`,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || '',
+      });
+    } else {
+      // Create admin notification
       await Notification.create({
         recipientRole: 'ADMIN',
         type: NOTIFICATION_TYPES.NEW_REGISTRATION,
-        title: '🔔 New User Registration Request',
-        message: `${user.name} (${user.email}) has requested account access.`,
+        title: 'New Account Approval Request',
+        message: `${user.name} (${user.email}) has registered and is waiting for account approval.`,
         relatedUser: user._id,
       });
 
@@ -129,7 +91,7 @@ const signup = async (req, res) => {
 
 /**
  * POST /api/auth/login
- * Authenticates ONLY Approved users
+ * Authenticates ONLY Approved users with distinct Email vs Password error messages
  */
 const login = async (req, res) => {
   try {
@@ -143,13 +105,21 @@ const login = async (req, res) => {
 
     const user = await User.findOne({ email: normalizedEmail }).select('+password');
 
+    // Distinct Error 1: Email Address Not Found
     if (!user || !user.password) {
-      return res.status(400).json({ message: 'Invalid email address or password' });
+      return res.status(400).json({
+        message: 'No account found with this email address. Please check your email or request registration.',
+        errorType: 'EMAIL_NOT_FOUND',
+      });
     }
 
+    // Distinct Error 2: Password Incorrect
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid email address or password' });
+      return res.status(400).json({
+        message: 'Incorrect password. Please check your password and try again.',
+        errorType: 'INVALID_PASSWORD',
+      });
     }
 
     // Auto-grant Super Admin
@@ -182,15 +152,19 @@ const login = async (req, res) => {
       });
     }
 
-    if (user.status !== 'Approved') {
-      return res.status(403).json({
-        message: 'Access denied. Your account has not been approved.',
-        status: user.status,
-      });
-    }
+    user.rememberMe = !!rememberMe;
+    await user.save();
 
-    // Issue JWT Token ONLY for Approved Users
-    const token = generateToken(user._id, !!rememberMe);
+    const token = generateToken(user._id, rememberMe);
+
+    await AuditLog.create({
+      action: 'USER_LOGIN',
+      performedBy: user._id,
+      targetUser: user._id,
+      details: `User ${user.email} logged in successfully`,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent') || '',
+    });
 
     res.json({
       user: {
@@ -206,26 +180,41 @@ const login = async (req, res) => {
     });
   } catch (err) {
     console.error('[login Error]:', err.message);
-    res.status(500).json({ message: 'Failed to log in', error: err.message });
+    res.status(500).json({ message: 'Login failed', error: err.message });
   }
 };
 
 /**
  * GET /api/auth/me
- * Returns logged-in user profile
+ * Returns profile for current authenticated session
  */
 const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    if (user.status !== 'Approved') {
-      return res.status(403).json({ message: 'Account is not approved', status: user.status });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
 
-    res.json({ user });
+    if (user.status !== 'Approved') {
+      return res.status(403).json({
+        message: `Account status is ${user.status}. Access denied.`,
+        status: user.status,
+      });
+    }
+
+    res.json({
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
+        status: user.status,
+        isAdmin: !!user.isAdmin,
+        createdAt: user.createdAt,
+      },
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch user', error: err.message });
+    res.status(500).json({ message: 'Failed to fetch user profile', error: err.message });
   }
 };
 
