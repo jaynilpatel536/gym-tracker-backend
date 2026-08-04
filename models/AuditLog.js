@@ -12,6 +12,7 @@ const auditLogSchema = new mongoose.Schema(
         'USER_SUSPENDED',
         'USER_LOGIN',
         'SUPER_ADMIN_REGISTERED',
+        'USER_PASSWORD_RESET_BY_ADMIN',
       ],
       required: true,
       index: true,

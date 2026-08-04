@@ -115,14 +115,18 @@ const approveUser = async (req, res) => {
     );
 
     // Audit log
-    await AuditLog.create({
-      action: 'USER_APPROVED',
-      performedBy: req.user._id,
-      targetUser: user._id,
-      details: `User approved by admin ${req.user.name} (${req.user.email})`,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || '',
-    });
+    try {
+      await AuditLog.create({
+        action: 'USER_APPROVED',
+        performedBy: req.user._id,
+        targetUser: user._id,
+        details: `User approved by admin ${req.user.name} (${req.user.email})`,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || '',
+      });
+    } catch (auditErr) {
+      console.warn('[approveUser AuditLog Warning]:', auditErr.message);
+    }
 
     res.json({ message: `Account for ${user.name} has been approved.`, user });
   } catch (err) {
@@ -150,14 +154,18 @@ const rejectUser = async (req, res) => {
     );
 
     // Audit log
-    await AuditLog.create({
-      action: 'USER_REJECTED',
-      performedBy: req.user._id,
-      targetUser: user._id,
-      details: `User rejected: ${user.rejectionReason}`,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || '',
-    });
+    try {
+      await AuditLog.create({
+        action: 'USER_REJECTED',
+        performedBy: req.user._id,
+        targetUser: user._id,
+        details: `User rejected: ${user.rejectionReason}`,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || '',
+      });
+    } catch (auditErr) {
+      console.warn('[rejectUser AuditLog Warning]:', auditErr.message);
+    }
 
     res.json({ message: `Registration request for ${user.name} has been rejected.`, user });
   } catch (err) {
@@ -182,18 +190,56 @@ const suspendUser = async (req, res) => {
     await user.save();
 
     // Audit log
-    await AuditLog.create({
-      action: 'USER_SUSPENDED',
-      performedBy: req.user._id,
-      targetUser: user._id,
-      details: `User suspended by admin ${req.user.name}`,
-      ipAddress: req.ip,
-      userAgent: req.get('user-agent') || '',
-    });
+    try {
+      await AuditLog.create({
+        action: 'USER_SUSPENDED',
+        performedBy: req.user._id,
+        targetUser: user._id,
+        details: `User suspended by admin ${req.user.name}`,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || '',
+      });
+    } catch (auditErr) {
+      console.warn('[suspendUser AuditLog Warning]:', auditErr.message);
+    }
 
     res.json({ message: `Account for ${user.name} has been suspended.`, user });
   } catch (err) {
     res.status(500).json({ message: 'Failed to suspend user', error: err.message });
+  }
+};
+
+// PUT /api/admin/users/:id/reset-password -> Reset user password (Admin only)
+const resetUserPassword = async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.trim().length < 6) {
+      return res.status(400).json({ message: 'New password must be at least 6 characters long.' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    user.password = newPassword.trim();
+    user.tokenVersion = (user.tokenVersion || 0) + 1; // Invalidate previous active tokens
+    await user.save();
+
+    try {
+      await AuditLog.create({
+        action: 'USER_PASSWORD_RESET_BY_ADMIN',
+        performedBy: req.user._id,
+        targetUser: user._id,
+        details: `Password for ${user.name} (${user.email}) was reset by admin ${req.user.name}`,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || '',
+      });
+    } catch (auditErr) {
+      console.warn('[resetUserPassword AuditLog Warning]:', auditErr.message);
+    }
+
+    res.json({ message: `Password for ${user.name} has been reset successfully.`, user });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to reset user password', error: err.message });
   }
 };
 
@@ -239,6 +285,7 @@ module.exports = {
   approveUser,
   rejectUser,
   suspendUser,
+  resetUserPassword,
   getNotifications,
   markNotificationsRead,
 };

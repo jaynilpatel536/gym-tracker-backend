@@ -5,6 +5,7 @@ const {
   approveUser,
   rejectUser,
   suspendUser,
+  resetUserPassword,
   getNotifications,
   markNotificationsRead,
 } = require('../controllers/adminController');
@@ -20,6 +21,7 @@ router.get('/users/:id', getUserById);
 router.put('/users/:id/approve', approveUser);
 router.put('/users/:id/reject', rejectUser);
 router.put('/users/:id/suspend', suspendUser);
+router.put('/users/:id/reset-password', resetUserPassword);
 
 router.get('/notifications', getNotifications);
 router.put('/notifications/mark-read', markNotificationsRead);
