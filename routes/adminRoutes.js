@@ -15,23 +15,13 @@ const router = express.Router();
 // All routes require authentication & admin role (`protect` + `admin`)
 router.use(protect, admin);
 
-// Unambiguous User Management Endpoints
-router.all('/approve-user/:id', approveUser);
-router.all('/reject-user/:id', rejectUser);
-router.all('/suspend-user/:id', suspendUser);
-
-// Legacy Path Pattern Support
-router.all('/users/:id/approve', approveUser);
-router.all('/users/approve/:id', approveUser);
-router.all('/users/:id/reject', rejectUser);
-router.all('/users/reject/:id', rejectUser);
-router.all('/users/:id/suspend', suspendUser);
-router.all('/users/suspend/:id', suspendUser);
-
 router.get('/users', getUsers);
 router.get('/users/:id', getUserById);
+router.put('/users/:id/approve', approveUser);
+router.put('/users/:id/reject', rejectUser);
+router.put('/users/:id/suspend', suspendUser);
 
 router.get('/notifications', getNotifications);
-router.all('/notifications/mark-read', markNotificationsRead);
+router.put('/notifications/mark-read', markNotificationsRead);
 
 module.exports = router;
