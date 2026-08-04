@@ -7,6 +7,9 @@ const userExerciseOverloadSchema = new mongoose.Schema(
 
     // Single Shared Overload Profile per User per Exercise Template
     currentWeight: { type: Number, default: 0 },
+    targetReps: { type: Number, default: 0 },
+    lastReps: { type: Number, default: 0 },
+
     autoProgressiveEnabled: { type: Boolean, default: false },
     increaseIntervalWeeks: { type: Number, default: 3 },
     increaseWeightKg: { type: Number, default: 2.5 },
