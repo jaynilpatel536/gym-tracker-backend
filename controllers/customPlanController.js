@@ -69,9 +69,22 @@ const getCustomPlans = async (req, res) => {
 // POST /api/custom-plans -> Create a new custom plan
 const createCustomPlan = async (req, res) => {
   try {
-    const { name, goal, durationWeeks } = req.body;
+    const { name, goal, durationWeeks, planCode } = req.body;
     if (!name) {
       return res.status(400).json({ message: 'Plan name is required' });
+    }
+
+    let initialDays = DEFAULT_DAYS;
+
+    if (planCode) {
+      const masterDays = await WorkoutDay.find({ planCode }).populate('exercises');
+      if (masterDays && masterDays.length > 0) {
+        initialDays = masterDays.map((d) => ({
+          dayNumber: d.dayNumber,
+          name: d.name,
+          exercises: (d.exercises || []).map((ex) => ex._id),
+        }));
+      }
     }
 
     const plan = await CustomPlan.create({
@@ -79,7 +92,7 @@ const createCustomPlan = async (req, res) => {
       name: name.trim(),
       goal: goal || 'Muscle Building',
       durationWeeks: parseInt(durationWeeks, 10) || 4,
-      days: DEFAULT_DAYS,
+      days: initialDays,
     });
 
     res.status(201).json({ plan });
@@ -309,7 +322,7 @@ const setActiveCustomPlan = async (req, res) => {
 };
 
 // PUT /api/custom-plans/reset-default-active -> Reset to Default Plan
-const resetDefaultActivePlan = async (req, res) => {
+const resetDefaultActivePlanRequest = async (req, res) => {
   try {
     await CustomPlan.updateMany({ user: req.user._id }, { isActive: false });
     res.json({ message: 'Reset to default workout plan' });
@@ -329,5 +342,5 @@ module.exports = {
   deleteCustomPlan,
   getActiveCustomPlan,
   setActiveCustomPlan,
-  resetDefaultActivePlan,
+  resetDefaultActivePlan: resetDefaultActivePlanRequest,
 };
