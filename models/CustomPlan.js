@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const customPlanDaySchema = new mongoose.Schema({
   dayNumber: { type: Number, required: true, min: 1, max: 7 },
   name: { type: String, required: true },
-  exercises: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Exercise' }],
+  exercises: [{ type: mongoose.Schema.Types.ObjectId, ref: 'ExerciseTemplate' }],
 });
 
 const customPlanSchema = new mongoose.Schema(

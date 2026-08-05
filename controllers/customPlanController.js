@@ -1,4 +1,5 @@
 const CustomPlan = require('../models/CustomPlan');
+const ExerciseTemplate = require('../models/ExerciseTemplate');
 const Exercise = require('../models/Exercise');
 const WorkoutDay = require('../models/WorkoutDay');
 
@@ -12,41 +13,47 @@ const DEFAULT_DAYS = [
   { dayNumber: 7, name: 'Day 7', exercises: [] },
 ];
 
+// Format days with populated ExerciseTemplate data
 const formatCustomPlanDays = (days) => {
   return days.map((d) => ({
     dayNumber: d.dayNumber,
     name: d.name,
     exercises: (d.exercises || []).map((ex) => {
-      const tpl = ex.template || {};
+      // ex is now directly an ExerciseTemplate document (populated)
+      const id = ex._id || ex;
+      const name = ex.name || '';
+      const category = ex.category || '';
+      const muscleGroup = ex.muscleGroup || '';
       return {
-        _id: ex._id,
-        templateId: tpl._id || ex._id,
+        _id: id,
+        templateId: id,
         sets: ex.sets || 3,
         repsRange: ex.repsRange || '8-12',
         defaultRestSeconds: ex.defaultRestSeconds || 90,
-        name: tpl.name || ex.name || 'Exercise',
-        category: tpl.category || ex.category || '',
-        muscleGroup: tpl.muscleGroup || ex.muscleGroup || tpl.category || '',
-        targetMuscle: tpl.targetMuscle || '',
-        imageUrl: tpl.imageUrl || ex.imageUrl || '',
-        currentWeight: tpl.currentWeight || 0,
-        autoProgressiveEnabled: !!tpl.autoProgressiveEnabled,
-        increaseIntervalWeeks: tpl.increaseIntervalWeeks || 3,
-        increaseWeightKg: tpl.increaseWeightKg || 2.5,
-        nextIncreaseDate: tpl.nextIncreaseDate || null,
+        name,
+        category,
+        muscleGroup,
+        targetMuscle: ex.targetMuscle || '',
+        imageUrl: ex.imageUrl || '',
+        currentWeight: ex.currentWeight || 0,
+        autoProgressiveEnabled: !!ex.autoProgressiveEnabled,
+        increaseIntervalWeeks: ex.increaseIntervalWeeks || 3,
+        increaseWeightKg: ex.increaseWeightKg || 2.5,
+        nextIncreaseDate: ex.nextIncreaseDate || null,
       };
     }),
   }));
 };
 
+// Helper: populate custom plan with ExerciseTemplate
+const populateCustomPlan = (planId) =>
+  CustomPlan.findById(planId).populate('days.exercises');
+
 // GET /api/custom-plans -> Get all custom plans for logged in user
 const getCustomPlans = async (req, res) => {
   try {
     const plans = await CustomPlan.find({ user: req.user._id })
-      .populate({
-        path: 'days.exercises',
-        populate: { path: 'template' },
-      })
+      .populate('days.exercises')
       .sort({ createdAt: -1 });
 
     const formattedPlans = plans.map((p) => ({
@@ -77,15 +84,22 @@ const createCustomPlan = async (req, res) => {
     let initialDays = DEFAULT_DAYS;
 
     if (planCode) {
+      // Fetch master WorkoutDays and resolve their ExerciseTemplate IDs
       const masterDays = await WorkoutDay.find({ planCode }).sort({ dayNumber: 1 });
       if (masterDays && masterDays.length > 0) {
         initialDays = await Promise.all(
           masterDays.map(async (d) => {
-            const dayExercises = await Exercise.find({ workoutDay: d._id }).sort({ createdAt: 1 });
+            // Get Exercise docs for this WorkoutDay, then extract their template IDs
+            const dayExercises = await Exercise.find({ workoutDay: d._id })
+              .sort({ order: 1 })
+              .populate('template');
+
             return {
               dayNumber: d.dayNumber,
               name: d.name,
-              exercises: dayExercises.map((ex) => ex._id),
+              exercises: dayExercises
+                .filter((ex) => ex.template)
+                .map((ex) => ex.template._id),
             };
           })
         );
@@ -102,10 +116,7 @@ const createCustomPlan = async (req, res) => {
       days: initialDays,
     });
 
-    const populatedPlan = await CustomPlan.findById(plan._id).populate({
-      path: 'days.exercises',
-      populate: { path: 'template' },
-    });
+    const populatedPlan = await populateCustomPlan(plan._id);
 
     res.status(201).json({
       plan: {
@@ -128,36 +139,35 @@ const createCustomPlan = async (req, res) => {
 // GET /api/custom-plans/:id -> Get single custom plan details
 const getCustomPlanById = async (req, res) => {
   try {
-    const plan = await CustomPlan.findOne({ _id: req.params.id, user: req.user._id }).populate({
-      path: 'days.exercises',
-      populate: { path: 'template' },
-    });
+    const plan = await CustomPlan.findOne({ _id: req.params.id, user: req.user._id })
+      .populate('days.exercises');
 
     if (!plan) {
       return res.status(404).json({ message: 'Custom plan not found' });
     }
 
-    const formatted = {
-      _id: plan._id,
-      user: plan.user,
-      name: plan.name,
-      goal: plan.goal,
-      durationWeeks: plan.durationWeeks,
-      isActive: plan.isActive,
-      createdAt: plan.createdAt,
-      days: formatCustomPlanDays(plan.days),
-    };
-
-    res.json({ plan: formatted });
+    res.json({
+      plan: {
+        _id: plan._id,
+        user: plan.user,
+        name: plan.name,
+        goal: plan.goal,
+        durationWeeks: plan.durationWeeks,
+        isActive: plan.isActive,
+        createdAt: plan.createdAt,
+        days: formatCustomPlanDays(plan.days),
+      },
+    });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch custom plan', error: err.message });
   }
 };
 
 // PUT /api/custom-plans/:id/days/:dayNumber -> Update exercises for a specific day
+// Accepts ExerciseTemplate IDs (from the exercise selection screen)
 const updatePlanDayExercises = async (req, res) => {
   try {
-    const { exerciseIds } = req.body;
+    const { exerciseIds } = req.body; // Array of ExerciseTemplate _ids
     const dayNumber = parseInt(req.params.dayNumber, 10);
 
     const plan = await CustomPlan.findOne({ _id: req.params.id, user: req.user._id });
@@ -174,23 +184,20 @@ const updatePlanDayExercises = async (req, res) => {
 
     await plan.save();
 
-    const updatedPlan = await CustomPlan.findById(plan._id).populate({
-      path: 'days.exercises',
-      populate: { path: 'template' },
+    const updatedPlan = await populateCustomPlan(plan._id);
+
+    res.json({
+      plan: {
+        _id: updatedPlan._id,
+        user: updatedPlan.user,
+        name: updatedPlan.name,
+        goal: updatedPlan.goal,
+        durationWeeks: updatedPlan.durationWeeks,
+        isActive: updatedPlan.isActive,
+        createdAt: updatedPlan.createdAt,
+        days: formatCustomPlanDays(updatedPlan.days),
+      },
     });
-
-    const formatted = {
-      _id: updatedPlan._id,
-      user: updatedPlan.user,
-      name: updatedPlan.name,
-      goal: updatedPlan.goal,
-      durationWeeks: updatedPlan.durationWeeks,
-      isActive: updatedPlan.isActive,
-      createdAt: updatedPlan.createdAt,
-      days: formatCustomPlanDays(updatedPlan.days),
-    };
-
-    res.json({ plan: formatted });
   } catch (err) {
     res.status(500).json({ message: 'Failed to update plan exercises', error: err.message });
   }
@@ -199,7 +206,7 @@ const updatePlanDayExercises = async (req, res) => {
 // PUT /api/custom-plans/:id/reorder-days -> Reorder workout days in custom plan
 const reorderPlanDays = async (req, res) => {
   try {
-    const { reorderedDays } = req.body; // Array of day objects [{ dayNumber, name, exercises: [...] }]
+    const { reorderedDays } = req.body;
     const plan = await CustomPlan.findOne({ _id: req.params.id, user: req.user._id });
     if (!plan) return res.status(404).json({ message: 'Custom plan not found' });
 
@@ -217,7 +224,7 @@ const reorderPlanDays = async (req, res) => {
 // PUT /api/custom-plans/:id/days/:dayNumber/reorder-exercises -> Reorder exercises inside a day
 const reorderDayExercises = async (req, res) => {
   try {
-    const { exerciseIds } = req.body; // Re-sequenced exercise IDs array
+    const { exerciseIds } = req.body;
     const dayNumber = parseInt(req.params.dayNumber, 10);
 
     const plan = await CustomPlan.findOne({ _id: req.params.id, user: req.user._id });
@@ -235,21 +242,23 @@ const reorderDayExercises = async (req, res) => {
   }
 };
 
-// PUT /api/custom-plans/:id/restore-default -> Restore custom plan to copy master default routine
+// PUT /api/custom-plans/:id/restore-default -> Restore custom plan to master default routine
 const restoreDefaultPlan = async (req, res) => {
   try {
-    const { planCode = 'plan1' } = req.body; // 'plan1' or 'plan2'
+    const { planCode = 'plan1' } = req.body;
     const plan = await CustomPlan.findOne({ _id: req.params.id, user: req.user._id });
     if (!plan) return res.status(404).json({ message: 'Custom plan not found' });
 
     const masterDays = await WorkoutDay.find({ planCode }).sort({ dayNumber: 1 });
     const restoredDays = await Promise.all(
       masterDays.map(async (d) => {
-        const dayExercises = await Exercise.find({ workoutDay: d._id }).sort({ createdAt: 1 });
+        const dayExercises = await Exercise.find({ workoutDay: d._id })
+          .sort({ order: 1 })
+          .populate('template');
         return {
           dayNumber: d.dayNumber,
           name: d.name,
-          exercises: dayExercises.map((ex) => ex._id),
+          exercises: dayExercises.filter((ex) => ex.template).map((ex) => ex.template._id),
         };
       })
     );
@@ -257,10 +266,7 @@ const restoreDefaultPlan = async (req, res) => {
     plan.days = restoredDays;
     await plan.save();
 
-    const updatedPlan = await CustomPlan.findById(plan._id).populate({
-      path: 'days.exercises',
-      populate: { path: 'template' },
-    });
+    const updatedPlan = await populateCustomPlan(plan._id);
 
     res.json({
       message: `Restored plan to Default ${planCode === 'plan2' ? 'Plan 2' : 'Plan 1'}`,
@@ -279,9 +285,7 @@ const restoreDefaultPlan = async (req, res) => {
 const deleteCustomPlan = async (req, res) => {
   try {
     const plan = await CustomPlan.findOneAndDelete({ _id: req.params.id, user: req.user._id });
-    if (!plan) {
-      return res.status(404).json({ message: 'Custom plan not found' });
-    }
+    if (!plan) return res.status(404).json({ message: 'Custom plan not found' });
     res.json({ message: 'Custom plan deleted successfully' });
   } catch (err) {
     res.status(500).json({ message: 'Failed to delete custom plan', error: err.message });
@@ -291,10 +295,8 @@ const deleteCustomPlan = async (req, res) => {
 // GET /api/custom-plans/active -> Get currently active custom plan for user
 const getActiveCustomPlan = async (req, res) => {
   try {
-    const activePlan = await CustomPlan.findOne({ user: req.user._id, isActive: true }).populate({
-      path: 'days.exercises',
-      populate: { path: 'template' },
-    });
+    const activePlan = await CustomPlan.findOne({ user: req.user._id, isActive: true })
+      .populate('days.exercises');
 
     let formatted = null;
     if (activePlan) {
@@ -324,34 +326,30 @@ const setActiveCustomPlan = async (req, res) => {
       { _id: req.params.id, user: req.user._id },
       { isActive: true },
       { new: true }
-    ).populate({
-      path: 'days.exercises',
-      populate: { path: 'template' },
+    ).populate('days.exercises');
+
+    if (!plan) return res.status(404).json({ message: 'Custom plan not found' });
+
+    res.json({
+      plan: {
+        _id: plan._id,
+        user: plan.user,
+        name: plan.name,
+        goal: plan.goal,
+        durationWeeks: plan.durationWeeks,
+        isActive: plan.isActive,
+        createdAt: plan.createdAt,
+        days: formatCustomPlanDays(plan.days),
+      },
+      message: `${plan.name} set as active plan`,
     });
-
-    if (!plan) {
-      return res.status(404).json({ message: 'Custom plan not found' });
-    }
-
-    const formatted = {
-      _id: plan._id,
-      user: plan.user,
-      name: plan.name,
-      goal: plan.goal,
-      durationWeeks: plan.durationWeeks,
-      isActive: plan.isActive,
-      createdAt: plan.createdAt,
-      days: formatCustomPlanDays(plan.days),
-    };
-
-    res.json({ plan: formatted, message: `${plan.name} set as active plan` });
   } catch (err) {
     res.status(500).json({ message: 'Failed to set active plan', error: err.message });
   }
 };
 
-// PUT /api/custom-plans/reset-default-active -> Reset to Default Plan
-const resetDefaultActivePlanRequest = async (req, res) => {
+// PUT /api/custom-plans/reset-default -> Reset to Default Plan (deactivate all custom plans)
+const resetDefaultActivePlan = async (req, res) => {
   try {
     await CustomPlan.updateMany({ user: req.user._id }, { isActive: false });
     res.json({ message: 'Reset to default workout plan' });
@@ -371,5 +369,5 @@ module.exports = {
   deleteCustomPlan,
   getActiveCustomPlan,
   setActiveCustomPlan,
-  resetDefaultActivePlan: resetDefaultActivePlanRequest,
+  resetDefaultActivePlan,
 };
