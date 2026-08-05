@@ -15,9 +15,9 @@ const resolveTemplateId = async (id) => {
 // POST /api/workout-history -> log a completed exercise (Done button)
 const logWorkout = async (req, res) => {
   try {
-    const { exerciseId, workoutDayId, sets, notes, date } = req.body;
-    if (!exerciseId || !workoutDayId || !Array.isArray(sets) || !sets.length) {
-      return res.status(400).json({ message: 'exerciseId, workoutDayId and sets are required' });
+    const { exerciseId, workoutDayId, customPlanId, customDayNumber, sets, notes, date } = req.body;
+    if (!exerciseId || !Array.isArray(sets) || !sets.length) {
+      return res.status(400).json({ message: 'exerciseId and sets are required' });
     }
 
     const templateId = await resolveTemplateId(exerciseId);
@@ -34,7 +34,9 @@ const logWorkout = async (req, res) => {
       user: req.user._id,
       template: templateId,
       exercise: exerciseId,
-      workoutDay: workoutDayId,
+      workoutDay: workoutDayId || null,
+      customPlanId: customPlanId || null,
+      customDayNumber: customDayNumber || null,
       date: date || Date.now(),
       sets,
       notes: notes || '',
@@ -50,7 +52,6 @@ const logWorkout = async (req, res) => {
       const template = await ExerciseTemplate.findById(templateId);
       if (template) {
         template.currentWeight = maxLoggedWeight;
-        // If auto progressive overload is enabled, recalculate next overload schedule from new weight date
         if (template.autoProgressiveEnabled) {
           const now = new Date();
           const intervalWeeks = template.increaseIntervalWeeks || 3;
@@ -165,12 +166,11 @@ const syncHistory = async (req, res) => {
       const templateId = await resolveTemplateId(exerciseId);
 
       // Check if duplicate log was already saved in the last 60 seconds
-      const existingLog = await WorkoutHistory.findOne({
-        user: req.user._id,
-        template: templateId,
-        workoutDay: workoutDayId,
-        createdAt: { $gte: windowStart },
-      });
+      // Handle both master-plan (workoutDayId) and custom-plan (customPlanId) duplicates
+      const dupQuery = { user: req.user._id, template: templateId, createdAt: { $gte: windowStart } };
+      if (item.customPlanId) dupQuery.customPlanId = item.customPlanId;
+      else if (workoutDayId) dupQuery.workoutDay = workoutDayId;
+      const existingLog = await WorkoutHistory.findOne(dupQuery);
 
       if (existingLog) {
         results.push({ localId, serverId: existingLog._id, duplicateSkipped: true });
@@ -188,7 +188,9 @@ const syncHistory = async (req, res) => {
         user: req.user._id,
         template: templateId,
         exercise: exerciseId,
-        workoutDay: workoutDayId,
+        workoutDay: workoutDayId || null,
+        customPlanId: item.customPlanId || null,
+        customDayNumber: item.customDayNumber || null,
         date: date || Date.now(),
         sets,
         notes: notes || '',

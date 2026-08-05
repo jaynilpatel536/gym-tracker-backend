@@ -32,7 +32,47 @@ const signup = async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
     const existingUser = await User.findOne({ email: normalizedEmail });
 
+    // C2: Allow re-registration if previous account was Rejected
     if (existingUser) {
+      if (existingUser.status === 'Rejected') {
+        // Reset the rejected account back to Pending with updated details
+        existingUser.name = name.trim();
+        existingUser.password = password; // will be hashed by pre-save hook
+        existingUser.phoneNumber = phoneNumber ? phoneNumber.trim() : existingUser.phoneNumber;
+        existingUser.status = 'Pending';
+        existingUser.rejectionReason = '';
+        existingUser.statusChangedAt = null;
+        existingUser.statusChangedBy = null;
+        existingUser.tokenVersion = (existingUser.tokenVersion || 0) + 1; // Invalidate any old sessions
+        await existingUser.save();
+
+        // Create new admin notification for re-registration
+        try {
+          await Notification.create({
+            recipientRole: 'ADMIN',
+            type: NOTIFICATION_TYPES.NEW_REGISTRATION,
+            title: 'Re-Registration Request',
+            message: `${existingUser.name} (${existingUser.email}) has re-submitted a registration request.`,
+            relatedUser: existingUser._id,
+          });
+          await AuditLog.create({
+            action: 'USER_RE_REGISTERED',
+            targetUser: existingUser._id,
+            details: `User re-registered after previous rejection: ${existingUser.email}`,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent') || '',
+          });
+        } catch (auditErr) {
+          console.warn('[re-registration AuditLog Warning]:', auditErr.message);
+        }
+
+        return res.status(201).json({
+          message: 'Your re-registration request has been submitted. Please wait for administrator approval.',
+          status: 'Pending',
+        });
+      }
+
+      // For all other statuses (Pending, Approved, Suspended) — block duplicate registration
       return res.status(400).json({ message: 'An account with this email address already exists.' });
     }
 

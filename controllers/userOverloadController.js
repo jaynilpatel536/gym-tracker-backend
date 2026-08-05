@@ -1,33 +1,47 @@
 const UserExerciseOverload = require('../models/UserExerciseOverload');
 const ExerciseTemplate = require('../models/ExerciseTemplate');
+const PersonalExercise = require('../models/PersonalExercise');
 
 // GET /api/user-overload/:templateId -> Get or create overload profile for (user, template)
+// Also supports ?type=personal for PersonalExercise overload profiles
 const getOverloadProfile = async (req, res) => {
   try {
     const { templateId } = req.params;
-    let profile = await UserExerciseOverload.findOne({
-      user: req.user._id,
-      template: templateId,
-    }).populate('template');
+    const isPersonal = req.query.type === 'personal';
+
+    const query = isPersonal
+      ? { user: req.user._id, personalExercise: templateId }
+      : { user: req.user._id, template: templateId };
+
+    let profile = await UserExerciseOverload.findOne(query)
+      .populate('template')
+      .populate('personalExercise');
 
     if (!profile) {
-      // Check if ExerciseTemplate exists
-      const templateDoc = await ExerciseTemplate.findById(templateId);
-      if (!templateDoc) {
-        return res.status(404).json({ message: 'Exercise template not found' });
+      if (isPersonal) {
+        // Create profile for personal exercise
+        const peDoc = await PersonalExercise.findById(templateId);
+        if (!peDoc) return res.status(404).json({ message: 'Personal exercise not found' });
+        profile = await UserExerciseOverload.create({
+          user: req.user._id,
+          personalExercise: templateId,
+          currentWeight: 0,
+        });
+        profile = await profile.populate('personalExercise');
+      } else {
+        // Create profile for master template
+        const templateDoc = await ExerciseTemplate.findById(templateId);
+        if (!templateDoc) return res.status(404).json({ message: 'Exercise template not found' });
+        profile = await UserExerciseOverload.create({
+          user: req.user._id,
+          template: templateId,
+          currentWeight: templateDoc.currentWeight || 0,
+          increaseWeightKg: templateDoc.increaseWeightKg || 2.5,
+          increaseIntervalWeeks: templateDoc.increaseIntervalWeeks || 3,
+          autoProgressiveEnabled: templateDoc.autoProgressiveEnabled || false,
+        });
+        profile = await profile.populate('template');
       }
-
-      // Create default overload profile for this user & template
-      profile = await UserExerciseOverload.create({
-        user: req.user._id,
-        template: templateId,
-        currentWeight: templateDoc.currentWeight || 0,
-        increaseWeightKg: templateDoc.increaseWeightKg || 2.5,
-        increaseIntervalWeeks: templateDoc.increaseIntervalWeeks || 3,
-        autoProgressiveEnabled: templateDoc.autoProgressiveEnabled || false,
-      });
-
-      profile = await profile.populate('template');
     }
 
     res.json({ profile });
@@ -76,7 +90,9 @@ const updateOverloadProfile = async (req, res) => {
 // GET /api/user-overload -> Get all overload profiles for current user (pre-warms local cache)
 const getAllUserOverloadProfiles = async (req, res) => {
   try {
-    const profiles = await UserExerciseOverload.find({ user: req.user._id }).populate('template');
+    const profiles = await UserExerciseOverload.find({ user: req.user._id })
+      .populate('template')
+      .populate('personalExercise');
     res.json({ profiles });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch user overload profiles', error: err.message });
