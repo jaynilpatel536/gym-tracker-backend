@@ -24,11 +24,11 @@ const formatCustomPlanDays = (days) => {
         sets: ex.sets || 3,
         repsRange: ex.repsRange || '8-12',
         defaultRestSeconds: ex.defaultRestSeconds || 90,
-        name: tpl.name || 'Exercise',
-        category: tpl.category || '',
-        muscleGroup: tpl.muscleGroup || tpl.category || '',
+        name: tpl.name || ex.name || 'Exercise',
+        category: tpl.category || ex.category || '',
+        muscleGroup: tpl.muscleGroup || ex.muscleGroup || tpl.category || '',
         targetMuscle: tpl.targetMuscle || '',
-        imageUrl: tpl.imageUrl || '',
+        imageUrl: tpl.imageUrl || ex.imageUrl || '',
         currentWeight: tpl.currentWeight || 0,
         autoProgressiveEnabled: !!tpl.autoProgressiveEnabled,
         increaseIntervalWeeks: tpl.increaseIntervalWeeks || 3,
@@ -77,13 +77,18 @@ const createCustomPlan = async (req, res) => {
     let initialDays = DEFAULT_DAYS;
 
     if (planCode) {
-      const masterDays = await WorkoutDay.find({ planCode }).populate('exercises');
+      const masterDays = await WorkoutDay.find({ planCode }).sort({ dayNumber: 1 });
       if (masterDays && masterDays.length > 0) {
-        initialDays = masterDays.map((d) => ({
-          dayNumber: d.dayNumber,
-          name: d.name,
-          exercises: (d.exercises || []).map((ex) => ex._id),
-        }));
+        initialDays = await Promise.all(
+          masterDays.map(async (d) => {
+            const dayExercises = await Exercise.find({ workoutDay: d._id }).sort({ createdAt: 1 });
+            return {
+              dayNumber: d.dayNumber,
+              name: d.name,
+              exercises: dayExercises.map((ex) => ex._id),
+            };
+          })
+        );
       }
     }
 
@@ -92,11 +97,30 @@ const createCustomPlan = async (req, res) => {
       name: name.trim(),
       goal: goal || 'Muscle Building',
       durationWeeks: parseInt(durationWeeks, 10) || 4,
+      planCode: planCode || null,
+      isBuiltInCopy: !!planCode,
       days: initialDays,
     });
 
-    res.status(201).json({ plan });
+    const populatedPlan = await CustomPlan.findById(plan._id).populate({
+      path: 'days.exercises',
+      populate: { path: 'template' },
+    });
+
+    res.status(201).json({
+      plan: {
+        _id: populatedPlan._id,
+        user: populatedPlan.user,
+        name: populatedPlan.name,
+        goal: populatedPlan.goal,
+        durationWeeks: populatedPlan.durationWeeks,
+        isActive: populatedPlan.isActive,
+        createdAt: populatedPlan.createdAt,
+        days: formatCustomPlanDays(populatedPlan.days),
+      },
+    });
   } catch (err) {
+    console.error('[createCustomPlan Error]:', err);
     res.status(500).json({ message: 'Failed to create custom plan', error: err.message });
   }
 };
@@ -218,12 +242,17 @@ const restoreDefaultPlan = async (req, res) => {
     const plan = await CustomPlan.findOne({ _id: req.params.id, user: req.user._id });
     if (!plan) return res.status(404).json({ message: 'Custom plan not found' });
 
-    const masterDays = await WorkoutDay.find({ planCode }).populate('exercises');
-    const restoredDays = masterDays.map((d) => ({
-      dayNumber: d.dayNumber,
-      name: d.name,
-      exercises: (d.exercises || []).map((ex) => ex._id),
-    }));
+    const masterDays = await WorkoutDay.find({ planCode }).sort({ dayNumber: 1 });
+    const restoredDays = await Promise.all(
+      masterDays.map(async (d) => {
+        const dayExercises = await Exercise.find({ workoutDay: d._id }).sort({ createdAt: 1 });
+        return {
+          dayNumber: d.dayNumber,
+          name: d.name,
+          exercises: dayExercises.map((ex) => ex._id),
+        };
+      })
+    );
 
     plan.days = restoredDays;
     await plan.save();
