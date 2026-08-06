@@ -8,6 +8,7 @@ const {
   resetUserPassword,
   getNotifications,
   markNotificationsRead,
+  cleanupRejectedAccounts,
 } = require('../controllers/adminController');
 const { protect, admin } = require('../middleware/auth');
 
@@ -25,5 +26,8 @@ router.put('/users/:id/reset-password', resetUserPassword);
 
 router.get('/notifications', getNotifications);
 router.put('/notifications/mark-read', markNotificationsRead);
+
+// M3: Manual trigger for cleaning up stale rejected accounts (7+ days old)
+router.post('/cleanup-rejected', cleanupRejectedAccounts);
 
 module.exports = router;

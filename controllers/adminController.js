@@ -279,6 +279,71 @@ const markNotificationsRead = async (req, res) => {
   }
 };
 
+// POST /api/admin/cleanup-rejected -> M3: Delete rejected accounts older than 7 days
+const cleanupRejectedAccounts = async (req, res) => {
+  try {
+    const cutoffDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
+
+    // Find rejected accounts older than 7 days
+    const staleRejected = await User.find({
+      status: 'Rejected',
+      statusChangedAt: { $lte: cutoffDate },
+    });
+
+    if (staleRejected.length === 0) {
+      return res.json({ message: 'No stale rejected accounts found.', deleted: 0 });
+    }
+
+    const userIds = staleRejected.map((u) => u._id);
+
+    // AuditLog entries are preserved (they ref targetUser by ID — not cascade deleted)
+    await User.deleteMany({ _id: { $in: userIds } });
+
+    // Also remove any unresolved notifications for these users
+    await Notification.deleteMany({ relatedUser: { $in: userIds } });
+
+    try {
+      await AuditLog.create({
+        action: 'USER_REJECTED',
+        performedBy: req.user._id,
+        targetUser: req.user._id,
+        details: `Auto-cleanup: Deleted ${staleRejected.length} rejected accounts older than 7 days. Emails: ${staleRejected.map((u) => u.email).join(', ')}`,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || '',
+      });
+    } catch (auditErr) {
+      console.warn('[cleanupRejected AuditLog Warning]:', auditErr.message);
+    }
+
+    res.json({
+      message: `Cleaned up ${staleRejected.length} rejected account(s) older than 7 days.`,
+      deleted: staleRejected.length,
+      deletedEmails: staleRejected.map((u) => u.email),
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to cleanup rejected accounts', error: err.message });
+  }
+};
+
+// Internal helper: run cleanup without HTTP context (called on server start)
+const runRejectedCleanupJob = async () => {
+  try {
+    const cutoffDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const staleRejected = await User.find({
+      status: 'Rejected',
+      statusChangedAt: { $lte: cutoffDate },
+    });
+    if (staleRejected.length > 0) {
+      const userIds = staleRejected.map((u) => u._id);
+      await User.deleteMany({ _id: { $in: userIds } });
+      await Notification.deleteMany({ relatedUser: { $in: userIds } });
+      console.log(`[Cleanup Job] Deleted ${staleRejected.length} stale rejected account(s).`);
+    }
+  } catch (err) {
+    console.error('[Cleanup Job Error]:', err.message);
+  }
+};
+
 module.exports = {
   getUsers,
   getUserById,
@@ -288,4 +353,6 @@ module.exports = {
   resetUserPassword,
   getNotifications,
   markNotificationsRead,
+  cleanupRejectedAccounts,
+  runRejectedCleanupJob,
 };
