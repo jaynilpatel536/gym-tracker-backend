@@ -10,13 +10,20 @@ const setLogSchema = new mongoose.Schema({
 const workoutHistorySchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    template: { type: mongoose.Schema.Types.ObjectId, ref: 'ExerciseTemplate', required: true },
+
+    // Exactly one of template OR personalExercise must be set.
+    // template  → master ExerciseTemplate (standard exercises)
+    // personalExercise → user-created PersonalExercise (not yet promoted to master)
+    template: { type: mongoose.Schema.Types.ObjectId, ref: 'ExerciseTemplate', default: null },
+    personalExercise: { type: mongoose.Schema.Types.ObjectId, ref: 'PersonalExercise', default: null },
+
     exercise: { type: mongoose.Schema.Types.ObjectId, ref: 'Exercise' },
     // workoutDay is optional — null when logging from a custom plan day
     workoutDay: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkoutDay', default: null },
     // Custom plan tracking (populated when logging from a CustomPlan day)
     customPlanId: { type: mongoose.Schema.Types.ObjectId, ref: 'CustomPlan', default: null },
     customDayNumber: { type: Number, default: null },
+
     date: { type: Date, default: Date.now },
     sets: [setLogSchema],
     notes: { type: String, default: '' },
@@ -25,7 +32,9 @@ const workoutHistorySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Indexes for fast history lookup
 workoutHistorySchema.index({ user: 1, template: 1, date: -1 });
+workoutHistorySchema.index({ user: 1, personalExercise: 1, date: -1 });
 workoutHistorySchema.index({ user: 1, customPlanId: 1, date: -1 });
 
 module.exports = mongoose.model('WorkoutHistory', workoutHistorySchema);
