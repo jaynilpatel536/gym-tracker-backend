@@ -48,11 +48,42 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ message: err.message || 'Server error' });
 });
 
-const PORT = process.env.PORT || 5000;
+const AppVersion = require('./models/AppVersion');
+
+const seedAppVersion102 = async () => {
+  try {
+    await AppVersion.findOneAndUpdate(
+      { platform: 'android', versionCode: 3 },
+      {
+        $set: {
+          platform: 'android',
+          versionName: '1.0.2',
+          versionCode: 3,
+          minimumSupportedVersionCode: 1,
+          apkUrl: 'https://gym-tracker-backend-qpu8.onrender.com/releases/application-a985cd8a-c81f-4c2c-b095-244909f73553.apk',
+          sha256: '64654ea87377304014a8ea18cf04038af06c1acbfb47b1ae7c6c1e1d5727e0a1',
+          fileSizeBytes: 75769552,
+          releaseNotes: [
+            'Instant 0ms app launch & background verification',
+            'Muscle group chip box text readability fix',
+            'Multi-user security and cache isolation',
+          ],
+          forceUpdate: false,
+          isActive: true,
+        },
+      },
+      { upsert: true, new: true, runValidators: true }
+    );
+    console.log('[Auto-Seed]: Version 1.0.2 successfully registered in MongoDB Atlas');
+  } catch (e) {
+    console.warn('[Auto-Seed Warning]:', e.message);
+  }
+};
 
 connectDB().then(() => {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    seedAppVersion102();
     // M3: Run cleanup once on start, then repeat every 24h while server is up
     runRejectedCleanupJob();
     setInterval(runRejectedCleanupJob, 24 * 60 * 60 * 1000);
