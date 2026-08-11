@@ -154,7 +154,7 @@ const login = async (req, res) => {
     // Distinct Error 1: Email Address Not Found
     if (!user || !user.password) {
       return res.status(400).json({
-        message: 'No account found with this email address. Please check your email or request registration.',
+        message: 'No account found with this email address. Please submit a registration request first before logging in.',
         errorType: 'EMAIL_NOT_FOUND',
       });
     }
