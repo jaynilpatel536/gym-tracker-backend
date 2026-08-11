@@ -18,9 +18,10 @@ function suggestProgression(previousSets = [], currentSets = []) {
   if (!validPrev.length && validCurr.length) {
     const currVolume = validCurr.reduce((sum, s) => sum + (s.weightKg || 0) * (s.reps || 0), 0);
     const currMaxWeight = Math.max(0, ...validCurr.map((s) => s.weightKg || 0));
+    // BUG-008 FIX: First ever workout is always a Personal Record
     return {
-      suggestion: 'Inaugural session logged! Aim to increase weight or reps next time.',
-      isPersonalRecord: true,
+      suggestion: 'First session logged! Great start — aim to beat this next time! 🏆',
+      isPersonalRecord: currVolume > 0 || currMaxWeight > 0, // true if any valid weight/volume
       prevVolume: 0,
       currVolume,
       prevMaxWeight: 0,

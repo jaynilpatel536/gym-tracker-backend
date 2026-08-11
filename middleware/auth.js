@@ -15,6 +15,16 @@ const protect = async (req, res, next) => {
       return res.status(401).json({ message: 'Not authorized, user not found' });
     }
 
+    // Token version check: invalidates sessions after password reset or suspension.
+    // decoded.tokenVersion is 0 (or missing) for tokens issued before this fix —
+    // those are treated as version 0, which matches users whose tokenVersion is also 0
+    // (i.e., no invalidation has ever occurred), so existing valid sessions keep working.
+    const decodedVersion = decoded.tokenVersion ?? 0;
+    const userVersion = user.tokenVersion ?? 0;
+    if (decodedVersion !== userVersion) {
+      return res.status(401).json({ message: 'Session expired. Please log in again.' });
+    }
+
     // Verify account status
     if (user.status === 'Suspended') {
       return res.status(403).json({

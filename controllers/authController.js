@@ -8,9 +8,9 @@ const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'progressfit.app@gma
 /**
  * Generate JWT token for approved user sessions
  */
-const generateToken = (userId, rememberMe = true) => {
+const generateToken = (userId, tokenVersion = 0, rememberMe = true) => {
   const expiresIn = rememberMe ? '365d' : '24h';
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn });
+  return jwt.sign({ id: userId, tokenVersion }, process.env.JWT_SECRET, { expiresIn });
 };
 
 /**
@@ -87,6 +87,8 @@ const signup = async (req, res) => {
       phoneNumber: phoneNumber ? phoneNumber.trim() : '',
       status: initialStatus,
       isAdmin: isSuperAdmin,
+      // BUG-015 FIX: set statusChangedAt on registration so cleanup job can target stale pending accounts
+      statusChangedAt: new Date(),
     });
 
     try {
@@ -199,7 +201,7 @@ const login = async (req, res) => {
     user.rememberMe = !!rememberMe;
     await user.save();
 
-    const token = generateToken(user._id, rememberMe);
+    const token = generateToken(user._id, user.tokenVersion || 0, rememberMe);
 
     try {
       await AuditLog.create({

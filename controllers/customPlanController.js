@@ -1,7 +1,10 @@
+const mongoose = require('mongoose');
 const CustomPlan = require('../models/CustomPlan');
 const ExerciseTemplate = require('../models/ExerciseTemplate');
+const PersonalExercise = require('../models/PersonalExercise');
 const Exercise = require('../models/Exercise');
 const WorkoutDay = require('../models/WorkoutDay');
+const UserExerciseOverload = require('../models/UserExerciseOverload');
 
 const DEFAULT_DAYS = [
   { dayNumber: 1, name: 'Day 1', exercises: [] },
@@ -13,36 +16,73 @@ const DEFAULT_DAYS = [
   { dayNumber: 7, name: 'Day 7', exercises: [] },
 ];
 
-// Format days with populated ExerciseTemplate data
-const formatCustomPlanDays = (days) => {
-  return days.map((d) => ({
-    dayNumber: d.dayNumber,
-    name: d.name,
-    exercises: (d.exercises || []).map((ex) => {
-      // ex is now directly an ExerciseTemplate document (populated)
-      const id = ex._id || ex;
-      const name = ex.name || '';
-      const category = ex.category || '';
-      const muscleGroup = ex.muscleGroup || '';
-      return {
-        _id: id,
-        templateId: id,
-        sets: ex.sets || 3,
-        repsRange: ex.repsRange || '8-12',
-        defaultRestSeconds: ex.defaultRestSeconds || 90,
-        name,
-        category,
-        muscleGroup,
-        targetMuscle: ex.targetMuscle || '',
-        imageUrl: ex.imageUrl || '',
-        currentWeight: ex.currentWeight || 0,
-        autoProgressiveEnabled: !!ex.autoProgressiveEnabled,
-        increaseIntervalWeeks: ex.increaseIntervalWeeks || 3,
-        increaseWeightKg: ex.increaseWeightKg || 2.5,
-        nextIncreaseDate: ex.nextIncreaseDate || null,
-      };
-    }),
-  }));
+// Format days with populated ExerciseTemplate or PersonalExercise data & user-scoped overload profiles
+const formatCustomPlanDays = async (days, userId = null) => {
+  const userOverloads = userId ? await UserExerciseOverload.find({ user: userId }) : [];
+  const userOverloadMap = {};
+  userOverloads.forEach((po) => {
+    if (po.template) userOverloadMap[String(po.template)] = po;
+    if (po.personalExercise) userOverloadMap[`pe:${po.personalExercise}`] = po;
+  });
+
+  return Promise.all(
+    days.map(async (d) => ({
+      dayNumber: d.dayNumber,
+      name: d.name,
+      exercises: (
+        await Promise.all(
+          (d.exercises || []).map(async (ex) => {
+            let id = ex?._id || ex;
+            let name = ex?.name || '';
+            let category = ex?.category || '';
+            let muscleGroup = ex?.muscleGroup || '';
+            let imageUrl = ex?.imageUrl || '';
+            let sets = ex?.sets || 3;
+            let repsRange = ex?.repsRange || '8-12';
+            let defaultRestSeconds = ex?.defaultRestSeconds || 90;
+            let targetMuscle = ex?.targetMuscle || '';
+            let isPersonal = !!ex?.isPersonal;
+
+            // If populate on ExerciseTemplate failed because ID belongs to PersonalExercise
+            if (!name && id && mongoose.Types.ObjectId.isValid(id)) {
+              const pe = await PersonalExercise.findById(id);
+              if (pe) {
+                name = pe.name;
+                category = pe.category;
+                muscleGroup = pe.muscleGroup;
+                imageUrl = pe.imageUrl || '';
+                isPersonal = true;
+              }
+            }
+
+            if (!name) return null;
+
+            const overloadKey = isPersonal ? `pe:${id}` : String(id);
+            const userProfile = userOverloadMap[overloadKey];
+
+            return {
+              _id: id,
+              templateId: id,
+              sets,
+              repsRange,
+              defaultRestSeconds,
+              name,
+              category,
+              muscleGroup,
+              targetMuscle,
+              imageUrl,
+              currentWeight: userProfile ? userProfile.currentWeight : 0,
+              autoProgressiveEnabled: userProfile ? !!userProfile.autoProgressiveEnabled : false,
+              increaseIntervalWeeks: userProfile ? userProfile.increaseIntervalWeeks : 3,
+              increaseWeightKg: userProfile ? userProfile.increaseWeightKg : 2.5,
+              nextIncreaseDate: userProfile ? userProfile.nextIncreaseDate : null,
+              isPersonal,
+            };
+          })
+        )
+      ).filter(Boolean),
+    }))
+  );
 };
 
 // Helper: populate custom plan with ExerciseTemplate
@@ -56,16 +96,18 @@ const getCustomPlans = async (req, res) => {
       .populate('days.exercises')
       .sort({ createdAt: -1 });
 
-    const formattedPlans = plans.map((p) => ({
-      _id: p._id,
-      user: p.user,
-      name: p.name,
-      goal: p.goal,
-      durationWeeks: p.durationWeeks,
-      isActive: p.isActive,
-      createdAt: p.createdAt,
-      days: formatCustomPlanDays(p.days),
-    }));
+    const formattedPlans = await Promise.all(
+      plans.map(async (p) => ({
+        _id: p._id,
+        user: p.user,
+        name: p.name,
+        goal: p.goal,
+        durationWeeks: p.durationWeeks,
+        isActive: p.isActive,
+        createdAt: p.createdAt,
+        days: await formatCustomPlanDays(p.days, req.user._id),
+      }))
+    );
 
     res.json({ plans: formattedPlans });
   } catch (err) {
@@ -126,8 +168,9 @@ const createCustomPlan = async (req, res) => {
         goal: populatedPlan.goal,
         durationWeeks: populatedPlan.durationWeeks,
         isActive: populatedPlan.isActive,
+        planCode: populatedPlan.planCode,
         createdAt: populatedPlan.createdAt,
-        days: formatCustomPlanDays(populatedPlan.days),
+        days: await formatCustomPlanDays(populatedPlan.days, req.user._id),
       },
     });
   } catch (err) {
@@ -154,8 +197,9 @@ const getCustomPlanById = async (req, res) => {
         goal: plan.goal,
         durationWeeks: plan.durationWeeks,
         isActive: plan.isActive,
+        planCode: plan.planCode,
         createdAt: plan.createdAt,
-        days: formatCustomPlanDays(plan.days),
+        days: await formatCustomPlanDays(plan.days, req.user._id),
       },
     });
   } catch (err) {
@@ -164,7 +208,6 @@ const getCustomPlanById = async (req, res) => {
 };
 
 // PUT /api/custom-plans/:id/days/:dayNumber -> Update exercises for a specific day
-// Accepts ExerciseTemplate IDs (from the exercise selection screen)
 const updatePlanDayExercises = async (req, res) => {
   try {
     const { exerciseIds } = req.body; // Array of ExerciseTemplate _ids
@@ -195,7 +238,7 @@ const updatePlanDayExercises = async (req, res) => {
         durationWeeks: updatedPlan.durationWeeks,
         isActive: updatedPlan.isActive,
         createdAt: updatedPlan.createdAt,
-        days: formatCustomPlanDays(updatedPlan.days),
+        days: await formatCustomPlanDays(updatedPlan.days, req.user._id),
       },
     });
   } catch (err) {
@@ -273,7 +316,7 @@ const restoreDefaultPlan = async (req, res) => {
       plan: {
         _id: updatedPlan._id,
         name: updatedPlan.name,
-        days: formatCustomPlanDays(updatedPlan.days),
+        days: await formatCustomPlanDays(updatedPlan.days, req.user._id),
       },
     });
   } catch (err) {
@@ -284,10 +327,31 @@ const restoreDefaultPlan = async (req, res) => {
 // DELETE /api/custom-plans/:id -> Delete a custom plan
 const deleteCustomPlan = async (req, res) => {
   try {
-    const plan = await CustomPlan.findOneAndDelete({ _id: req.params.id, user: req.user._id });
-    if (!plan) return res.status(404).json({ message: 'Custom plan not found' });
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid custom plan ID' });
+    }
+
+    const filter = req.user.isAdmin ? { _id: id } : { _id: id, user: req.user._id };
+
+    const plan = await CustomPlan.findOneAndDelete(filter);
+    if (!plan) {
+      const existingPlanOtherUser = await CustomPlan.findById(id);
+      if (existingPlanOtherUser) {
+        return res.status(403).json({
+          message: 'Permission denied: You can only delete custom plans created by your account.',
+        });
+      }
+      return res.status(404).json({ message: 'Custom plan not found or already deleted.' });
+    }
+
+    if (plan.isActive) {
+      await CustomPlan.updateMany({ user: plan.user }, { $set: { isActive: false } });
+    }
+
     res.json({ message: 'Custom plan deleted successfully' });
   } catch (err) {
+    console.error('[deleteCustomPlan Error]:', err);
     res.status(500).json({ message: 'Failed to delete custom plan', error: err.message });
   }
 };
@@ -307,8 +371,9 @@ const getActiveCustomPlan = async (req, res) => {
         goal: activePlan.goal,
         durationWeeks: activePlan.durationWeeks,
         isActive: activePlan.isActive,
+        planCode: activePlan.planCode,
         createdAt: activePlan.createdAt,
-        days: formatCustomPlanDays(activePlan.days),
+        days: await formatCustomPlanDays(activePlan.days, req.user._id),
       };
     }
 
@@ -318,12 +383,17 @@ const getActiveCustomPlan = async (req, res) => {
   }
 };
 
-// PUT /api/custom-plans/:id/set-active -> Set specific custom plan as active
+// PUT /api/custom-plans/:id/set-active -> Set a custom plan as active
 const setActiveCustomPlan = async (req, res) => {
   try {
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Invalid custom plan ID' });
+    }
+
     await CustomPlan.updateMany({ user: req.user._id }, { isActive: false });
     const plan = await CustomPlan.findOneAndUpdate(
-      { _id: req.params.id, user: req.user._id },
+      { _id: id, user: req.user._id },
       { isActive: true },
       { new: true }
     ).populate('days.exercises');
@@ -338,8 +408,9 @@ const setActiveCustomPlan = async (req, res) => {
         goal: plan.goal,
         durationWeeks: plan.durationWeeks,
         isActive: plan.isActive,
+        planCode: plan.planCode,
         createdAt: plan.createdAt,
-        days: formatCustomPlanDays(plan.days),
+        days: await formatCustomPlanDays(plan.days, req.user._id),
       },
       message: `${plan.name} set as active plan`,
     });

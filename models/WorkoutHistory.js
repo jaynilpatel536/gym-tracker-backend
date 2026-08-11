@@ -32,6 +32,11 @@ const workoutHistorySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Custom validator: Ensure at least one of template OR personalExercise is populated
+workoutHistorySchema.path('template').validate(function () {
+  return this.template != null || this.personalExercise != null;
+}, 'WorkoutHistory document must reference either a master ExerciseTemplate or a PersonalExercise.');
+
 // Indexes for fast history lookup
 workoutHistorySchema.index({ user: 1, template: 1, date: -1 });
 workoutHistorySchema.index({ user: 1, personalExercise: 1, date: -1 });

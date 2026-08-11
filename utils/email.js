@@ -7,7 +7,7 @@ const createNodemailerTransporter = () => {
     secure: true,
     auth: {
       user: process.env.SMTP_USERNAME || 'progressfit.app@gmail.com',
-      pass: process.env.SMTP_PASSWORD || 'dcbrkangjfzvrqir',
+      pass: process.env.SMTP_PASSWORD,
     },
     tls: { rejectUnauthorized: false },
   });

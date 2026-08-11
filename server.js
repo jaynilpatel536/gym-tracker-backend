@@ -13,6 +13,7 @@ const userOverloadRoutes = require('./routes/userOverloadRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const customPlanRoutes = require('./routes/customPlanRoutes');
 const personalExerciseRoutes = require('./routes/personalExerciseRoutes');
+const appVersionRoutes = require('./routes/appVersionRoutes');
 const { runRejectedCleanupJob } = require('./controllers/adminController');
 
 const app = express();
@@ -22,6 +23,8 @@ app.use(express.json());
 
 // Serve exercise images statically from the exercise folder
 app.use('/exercise-images', express.static(path.join(__dirname, 'exercise')));
+// Serve release APK files statically from the releases folder
+app.use('/releases', express.static(path.join(__dirname, 'releases')));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
@@ -34,6 +37,7 @@ app.use('/api/user-overload', userOverloadRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/custom-plans', customPlanRoutes);
 app.use('/api/personal-exercises', personalExerciseRoutes);
+app.use('/api/app-version', appVersionRoutes);
 
 // 404 handler
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
@@ -49,7 +53,8 @@ const PORT = process.env.PORT || 5000;
 connectDB().then(() => {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    // M3: Auto-cleanup stale rejected accounts (older than 7 days) on every server start
+    // M3: Run cleanup once on start, then repeat every 24h while server is up
     runRejectedCleanupJob();
+    setInterval(runRejectedCleanupJob, 24 * 60 * 60 * 1000);
   });
 });

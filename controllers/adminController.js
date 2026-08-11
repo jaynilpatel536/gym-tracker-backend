@@ -22,7 +22,9 @@ const getUsers = async (req, res) => {
     }
 
     if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), 'i');
+      // BUG-009 FIX: Escape all special regex chars to prevent ReDoS attack
+      const escapedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const searchRegex = new RegExp(escapedSearch, 'i');
       const searchCondition = [
         { name: searchRegex },
         { email: searchRegex },

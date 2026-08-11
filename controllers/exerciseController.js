@@ -2,6 +2,7 @@ const fs = require('fs');
 const Exercise = require('../models/Exercise');
 const ExerciseTemplate = require('../models/ExerciseTemplate');
 const ExerciseVideo = require('../models/ExerciseVideo');
+const UserExerciseOverload = require('../models/UserExerciseOverload');
 const { uploadToCloudinary, deleteFromCloudinary } = require('../config/cloudinary');
 
 // Helper to resolve an Exercise ID or ExerciseTemplate ID to an ExerciseTemplate document
@@ -167,6 +168,11 @@ const getExerciseDetails = async (req, res) => {
 
     const video = await ExerciseVideo.findOne({ exercise: exercise ? exercise._id : template._id });
 
+    let userProfile = null;
+    if (req.user && template) {
+      userProfile = await UserExerciseOverload.findOne({ user: req.user._id, template: template._id });
+    }
+
     const details = {
       _id: exercise ? exercise._id : template._id,
       templateId: template._id,
@@ -184,13 +190,13 @@ const getExerciseDetails = async (req, res) => {
       benefits: template.benefits,
       tips: template.tips,
       commonMistakes: template.commonMistakes,
-      currentWeight: template.currentWeight,
-      autoProgressiveEnabled: template.autoProgressiveEnabled,
-      increaseIntervalWeeks: template.increaseIntervalWeeks,
-      increaseWeightKg: template.increaseWeightKg,
-      startDate: template.startDate,
-      nextIncreaseDate: template.nextIncreaseDate,
-      lastIncreaseDate: template.lastIncreaseDate,
+      currentWeight: userProfile ? userProfile.currentWeight : 0,
+      autoProgressiveEnabled: userProfile ? !!userProfile.autoProgressiveEnabled : false,
+      increaseIntervalWeeks: userProfile ? userProfile.increaseIntervalWeeks : 3,
+      increaseWeightKg: userProfile ? userProfile.increaseWeightKg : 2.5,
+      startDate: userProfile ? userProfile.startDate : null,
+      nextIncreaseDate: userProfile ? userProfile.nextIncreaseDate : null,
+      lastIncreaseDate: userProfile ? userProfile.lastIncreaseDate : null,
     };
 
     res.json({
@@ -314,15 +320,20 @@ const getAutoOverloadSettings = async (req, res) => {
     const template = await resolveTemplate(req.params.id);
     if (!template) return res.status(404).json({ message: 'Exercise not found' });
 
+    let profile = null;
+    if (req.user) {
+      profile = await UserExerciseOverload.findOne({ user: req.user._id, template: template._id });
+    }
+
     res.json({
       templateId: template._id,
-      autoProgressiveEnabled: template.autoProgressiveEnabled,
-      increaseIntervalWeeks: template.increaseIntervalWeeks,
-      increaseWeightKg: template.increaseWeightKg,
-      startDate: template.startDate,
-      nextIncreaseDate: template.nextIncreaseDate,
-      lastIncreaseDate: template.lastIncreaseDate,
-      currentWeight: template.currentWeight,
+      autoProgressiveEnabled: profile ? profile.autoProgressiveEnabled : false,
+      increaseIntervalWeeks: profile ? profile.increaseIntervalWeeks : 3,
+      increaseWeightKg: profile ? profile.increaseWeightKg : 2.5,
+      startDate: profile ? profile.startDate : null,
+      nextIncreaseDate: profile ? profile.nextIncreaseDate : null,
+      lastIncreaseDate: profile ? profile.lastIncreaseDate : null,
+      currentWeight: profile ? profile.currentWeight : 0,
     });
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch overload settings', error: err.message });
@@ -364,21 +375,53 @@ const updateAutoOverloadSettings = async (req, res) => {
       startDate,
       nextIncreaseDate,
       lastIncreaseDate,
+      updatedAt: now,
     };
 
     if (currentWeight !== undefined && currentWeight !== null && !isNaN(parseFloat(currentWeight))) {
       payload.currentWeight = parseFloat(currentWeight);
     }
 
-    if (applyToAllExercises) {
-      await ExerciseTemplate.updateMany({}, { $set: payload });
-      const updated = await ExerciseTemplate.findById(template._id);
-      return res.json({ message: 'Auto-overload settings applied to all exercise templates', exercise: updated });
-    } else {
-      Object.assign(template, payload);
-      await template.save();
-      return res.json({ message: 'Auto-overload settings updated', exercise: template });
+    if (req.user) {
+      if (applyToAllExercises) {
+        const templates = await ExerciseTemplate.find({});
+        for (const tpl of templates) {
+          await UserExerciseOverload.findOneAndUpdate(
+            { user: req.user._id, template: tpl._id },
+            { $set: payload },
+            { upsert: true, new: true }
+          );
+        }
+      } else {
+        await UserExerciseOverload.findOneAndUpdate(
+          { user: req.user._id, template: template._id },
+          { $set: payload },
+          { upsert: true, new: true }
+        );
+      }
     }
+
+    const userProfile = req.user
+      ? await UserExerciseOverload.findOne({ user: req.user._id, template: template._id })
+      : null;
+
+    return res.json({
+      message: applyToAllExercises
+        ? 'Auto-overload settings applied to all exercise templates'
+        : 'Auto-overload settings updated',
+      exercise: {
+        _id: template._id,
+        templateId: template._id,
+        name: template.name,
+        currentWeight: userProfile ? userProfile.currentWeight : 0,
+        autoProgressiveEnabled: userProfile ? !!userProfile.autoProgressiveEnabled : false,
+        increaseIntervalWeeks: userProfile ? userProfile.increaseIntervalWeeks : 3,
+        increaseWeightKg: userProfile ? userProfile.increaseWeightKg : 2.5,
+        startDate: userProfile ? userProfile.startDate : null,
+        nextIncreaseDate: userProfile ? userProfile.nextIncreaseDate : null,
+        lastIncreaseDate: userProfile ? userProfile.lastIncreaseDate : null,
+      },
+    });
   } catch (err) {
     res.status(500).json({ message: 'Failed to update overload settings', error: err.message });
   }
@@ -398,10 +441,24 @@ const checkAutoOverloadProgressions = async (req, res) => {
         const elapsedMs = now.getTime() - nextTime + intervalMs;
         const numIntervals = Math.max(1, Math.floor(elapsedMs / intervalMs));
 
-        const oldWeight = tpl.currentWeight || 0;
+        let oldWeight = tpl.currentWeight || 0;
+        if (req.user) {
+          const userOverload = await UserExerciseOverload.findOne({ user: req.user._id, template: tpl._id });
+          if (userOverload && userOverload.currentWeight > 0) {
+            oldWeight = userOverload.currentWeight;
+          }
+        }
+
         const newWeight = oldWeight + tpl.increaseWeightKg * numIntervals;
 
-        tpl.currentWeight = newWeight;
+        if (req.user) {
+          await UserExerciseOverload.findOneAndUpdate(
+            { user: req.user._id, template: tpl._id },
+            { $set: { currentWeight: newWeight, updatedAt: now } },
+            { upsert: true, new: true }
+          );
+        }
+
         tpl.lastIncreaseDate = now;
         tpl.nextIncreaseDate = new Date(nextTime + numIntervals * intervalMs);
         await tpl.save();

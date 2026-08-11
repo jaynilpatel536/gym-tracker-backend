@@ -31,7 +31,7 @@ router.put('/:id/auto-overload', protect, updateAutoOverloadSettings);
 router.get('/:id', protect, getExerciseDetails);
 router.put('/:id', protect, updateExercise);
 router.delete('/:id', protect, deleteExercise);
-router.post('/:id/image', protect, upload.single('image'), uploadExerciseImage);
-router.post('/:id/video', protect, upload.single('video'), uploadExerciseVideo);
+router.post('/:id/image', protect, admin, upload.single('image'), uploadExerciseImage);
+router.post('/:id/video', protect, admin, upload.single('video'), uploadExerciseVideo);
 
 module.exports = router;

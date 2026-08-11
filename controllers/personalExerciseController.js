@@ -18,6 +18,21 @@ const createPersonalExercise = async (req, res) => {
       reviewStatus: { $ne: 'Rejected' },
     });
 
+    // Case-insensitive duplicate check for current user's personal exercises
+    const escapedName = name.trim().replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const existingDuplicate = await PersonalExercise.findOne({
+      createdBy: req.user._id,
+      name: new RegExp(`^${escapedName}$`, 'i'),
+      reviewStatus: { $ne: 'Rejected' },
+    });
+
+    if (existingDuplicate) {
+      return res.status(400).json({
+        message: `You already have a personal exercise named "${existingDuplicate.name}". Please use a different name.`,
+        isDuplicate: true,
+      });
+    }
+
     if (existingCount >= PERSONAL_EXERCISE_LIMIT) {
       return res.status(400).json({
         message: `Personal exercise limit reached (${PERSONAL_EXERCISE_LIMIT}/${PERSONAL_EXERCISE_LIMIT}). Please delete an existing personal exercise or wait for admin approval.`,

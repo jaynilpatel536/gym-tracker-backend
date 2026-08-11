@@ -1,13 +1,27 @@
 const WorkoutHistory = require('../models/WorkoutHistory');
+const ExerciseTemplate = require('../models/ExerciseTemplate');
+const PersonalExercise = require('../models/PersonalExercise');
+const Exercise = require('../models/Exercise');
 const { suggestProgression } = require('../utils/progressiveOverload');
+const { resolveExerciseIdentity } = require('../utils/exerciseIdentity');
 
-// GET /api/progressive-overload/:exerciseId -> compares last 2 sessions, returns suggestion + PR flag
+// GET /api/progressive-overload/:exerciseId
+// Compares last 2 sessions for this user + exercise, returns suggestion + PR flag.
 const getProgressiveOverload = async (req, res) => {
   try {
-    const sessions = await WorkoutHistory.find({
-      user: req.user._id,
-      exercise: req.params.exerciseId,
-    })
+    // BUG FIX: resolve the incoming exerciseId to its canonical identity so we
+    // query WorkoutHistory on the correct field (.template or .personalExercise)
+    // instead of the stale legacy .exercise field that logWorkout() never writes to.
+    const identity = await resolveExerciseIdentity(req.params.exerciseId);
+
+    const query = { user: req.user._id };
+    if (identity.isPersonal) {
+      query.personalExercise = identity.personalExerciseId;
+    } else {
+      query.template = identity.templateId;
+    }
+
+    const sessions = await WorkoutHistory.find(query)
       .sort({ date: -1 })
       .limit(2);
 

@@ -75,11 +75,18 @@ const updateOverloadProfile = async (req, res) => {
     if (lastIncreaseDate !== undefined) updateFields.lastIncreaseDate = lastIncreaseDate;
     if (notes !== undefined) updateFields.notes = notes.trim();
 
+    const isPersonal = req.query.type === 'personal';
+    const filter = isPersonal
+      ? { user: req.user._id, personalExercise: templateId }
+      : { user: req.user._id, template: templateId };
+
     const profile = await UserExerciseOverload.findOneAndUpdate(
-      { user: req.user._id, template: templateId },
+      filter,
       { $set: updateFields },
       { new: true, upsert: true, runValidators: true }
-    ).populate('template');
+    )
+      .populate('template')
+      .populate('personalExercise');
 
     res.json({ message: 'Progressive overload profile updated', profile });
   } catch (err) {

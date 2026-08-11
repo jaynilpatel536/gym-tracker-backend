@@ -1,5 +1,6 @@
 const WorkoutDay = require('../models/WorkoutDay');
 const Exercise = require('../models/Exercise');
+const UserExerciseOverload = require('../models/UserExerciseOverload');
 
 // GET /api/workout-days  -> Week 1 screen: Day 1-7 cards for plan1 or plan2
 const getAllDays = async (req, res) => {
@@ -53,8 +54,18 @@ const getDayByNumber = async (req, res) => {
       .populate('template')
       .sort({ order: 1 });
 
+    // Fetch user-scoped overload profiles for logged in user
+    const userOverloads = req.user ? await UserExerciseOverload.find({ user: req.user._id }) : [];
+    const userOverloadMap = {};
+    userOverloads.forEach((po) => {
+      if (po.template) userOverloadMap[String(po.template)] = po;
+    });
+
     const formattedExercises = exercises.map((ex) => {
       const tpl = ex.template || {};
+      const templateId = String(tpl._id || ex._id);
+      const userProfile = userOverloadMap[templateId];
+
       return {
         _id: ex._id,
         templateId: tpl._id || ex._id,
@@ -72,15 +83,15 @@ const getDayByNumber = async (req, res) => {
         tips: tpl.tips || [],
         commonMistakes: tpl.commonMistakes || [],
 
-        // Shared Progressive Overload Configuration from ExerciseTemplate
-        autoProgressiveEnabled: !!tpl.autoProgressiveEnabled,
-        increaseIntervalWeeks: tpl.increaseIntervalWeeks || 3,
-        increaseWeightKg: tpl.increaseWeightKg || 2.5,
-        startDate: tpl.startDate || null,
-        nextIncreaseDate: tpl.nextIncreaseDate || null,
-        lastIncreaseDate: tpl.lastIncreaseDate || null,
-        currentWeight: tpl.currentWeight || 0,
-        updatedAt: tpl.updatedAt || ex.updatedAt,
+        // Per-user Progressive Overload Configuration from UserExerciseOverload
+        currentWeight: userProfile ? userProfile.currentWeight : 0,
+        autoProgressiveEnabled: userProfile ? !!userProfile.autoProgressiveEnabled : false,
+        increaseIntervalWeeks: userProfile ? userProfile.increaseIntervalWeeks : 3,
+        increaseWeightKg: userProfile ? userProfile.increaseWeightKg : 2.5,
+        startDate: userProfile ? userProfile.startDate : null,
+        nextIncreaseDate: userProfile ? userProfile.nextIncreaseDate : null,
+        lastIncreaseDate: userProfile ? userProfile.lastIncreaseDate : null,
+        updatedAt: userProfile ? userProfile.updatedAt : ex.updatedAt,
       };
     });
 

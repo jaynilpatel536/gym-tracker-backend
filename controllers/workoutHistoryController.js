@@ -4,44 +4,7 @@ const ExerciseTemplate = require('../models/ExerciseTemplate');
 const PersonalExercise = require('../models/PersonalExercise');
 const UserExerciseOverload = require('../models/UserExerciseOverload');
 const { suggestProgression } = require('../utils/progressiveOverload');
-
-/**
- * resolveExerciseIdentity
- * Given an exerciseId, determines whether it belongs to:
- *   - An ExerciseTemplate  → { templateId, personalExerciseId: null, isPersonal: false }
- *   - A PersonalExercise   → { templateId: null, personalExerciseId, isPersonal: true }
- *   - A master Exercise    → resolves to its template
- *
- * If a PersonalExercise has been promoted (has promotedTemplateId), use the template ID.
- */
-const resolveExerciseIdentity = async (id) => {
-  if (!id) return { templateId: null, personalExerciseId: null, isPersonal: false };
-
-  // 1. Check ExerciseTemplate first (most common path)
-  const template = await ExerciseTemplate.findById(id);
-  if (template) {
-    return { templateId: template._id, personalExerciseId: null, isPersonal: false };
-  }
-
-  // 2. Check PersonalExercise
-  const pe = await PersonalExercise.findById(id);
-  if (pe) {
-    // If promoted to master template, treat as master from now on
-    if (pe.promotedTemplateId) {
-      return { templateId: pe.promotedTemplateId, personalExerciseId: null, isPersonal: false };
-    }
-    return { templateId: null, personalExerciseId: pe._id, isPersonal: true };
-  }
-
-  // 3. Fallback: try master Exercise (legacy path)
-  const exercise = await Exercise.findById(id);
-  if (exercise && exercise.template) {
-    return { templateId: exercise.template, personalExerciseId: null, isPersonal: false };
-  }
-
-  // 4. Return as-is (unknown ID — let DB validation catch it)
-  return { templateId: id, personalExerciseId: null, isPersonal: false };
-};
+const { resolveExerciseIdentity } = require('../utils/exerciseIdentity');
 
 // Backward-compatible helper used by old callers that only need templateId
 const resolveTemplateId = async (id) => {
@@ -51,23 +14,35 @@ const resolveTemplateId = async (id) => {
 
 /**
  * Update the exercise weight record after a completed log.
- * - For ExerciseTemplate: updates ExerciseTemplate.currentWeight
- * - For PersonalExercise: updates UserExerciseOverload.currentWeight (user-specific)
+ * BUG-003+004 FIX: ALWAYS writes to UserExerciseOverload (per-user).
+ * ExerciseTemplate.currentWeight was a shared field that caused multi-user
+ * data corruption — any user's log would overwrite every other user's data.
+ *
+ * For master template exercises: upserts UserExerciseOverload { user, template }
+ * For personal exercises: upserts UserExerciseOverload { user, personalExercise }
+ *
+ * Auto-overload date scheduling (nextIncreaseDate) still updates ExerciseTemplate
+ * for the shared interval tracking, but currentWeight is now strictly per-user.
  */
 const updateWeightAfterLog = async (identity, userId, maxLoggedWeight) => {
   if (!maxLoggedWeight || maxLoggedWeight <= 0) return;
 
   if (!identity.isPersonal && identity.templateId) {
-    // Master template: update shared ExerciseTemplate.currentWeight
+    // Master template: upsert per-user overload profile (NOT the shared ExerciseTemplate)
+    await UserExerciseOverload.findOneAndUpdate(
+      { user: userId, template: identity.templateId },
+      { $set: { currentWeight: maxLoggedWeight, updatedAt: new Date() } },
+      { upsert: true, new: true }
+    );
+
+    // Still update the auto-progressive scheduling dates on the template (these are plan-level, not user-level)
+    // but do NOT touch currentWeight on ExerciseTemplate — it is now read-only (shared field)
     const tpl = await ExerciseTemplate.findById(identity.templateId);
-    if (tpl) {
-      tpl.currentWeight = maxLoggedWeight;
-      if (tpl.autoProgressiveEnabled) {
-        const now = new Date();
-        const intervalWeeks = tpl.increaseIntervalWeeks || 3;
-        tpl.lastIncreaseDate = now;
-        tpl.nextIncreaseDate = new Date(now.getTime() + intervalWeeks * 7 * 24 * 60 * 60 * 1000);
-      }
+    if (tpl && tpl.autoProgressiveEnabled) {
+      const now = new Date();
+      const intervalWeeks = tpl.increaseIntervalWeeks || 3;
+      tpl.lastIncreaseDate = now;
+      tpl.nextIncreaseDate = new Date(now.getTime() + intervalWeeks * 7 * 24 * 60 * 60 * 1000);
       await tpl.save();
     }
   } else if (identity.isPersonal && identity.personalExerciseId) {
@@ -173,7 +148,12 @@ const getExerciseProgressChartData = async (req, res) => {
       if (!tpl) return res.status(404).json({ message: 'Exercise not found' });
       exerciseName = tpl.name;
       exerciseMuscleGroup = tpl.muscleGroup || tpl.category;
-      currentWeight = tpl.currentWeight || 0;
+      // BUG-003 consistency fix: read per-user weight from UserExerciseOverload, not shared ExerciseTemplate
+      const overload = await UserExerciseOverload.findOne({
+        user: req.user._id,
+        template: identity.templateId,
+      });
+      currentWeight = overload?.currentWeight ?? tpl.currentWeight ?? 0;
     }
 
     const query = { user: req.user._id };
