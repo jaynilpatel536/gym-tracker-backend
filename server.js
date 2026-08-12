@@ -1,4 +1,3 @@
-// Deploy: v1.0.3 - force-publish routes active
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -16,8 +15,10 @@ const customPlanRoutes = require('./routes/customPlanRoutes');
 const personalExerciseRoutes = require('./routes/personalExerciseRoutes');
 const appVersionRoutes = require('./routes/appVersionRoutes');
 const { runRejectedCleanupJob } = require('./controllers/adminController');
+const AppVersion = require('./models/AppVersion');
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
@@ -49,9 +50,14 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ message: err.message || 'Server error' });
 });
 
-const AppVersion = require('./models/AppVersion');
-
-const seedAppVersion103 = async () => {
+/**
+ * Upserts the current production AppVersion record on server startup.
+ * Uses findOneAndUpdate with upsert so it is safe to run repeatedly:
+ *   - If no versionCode:4 record exists → creates it.
+ *   - If versionCode:4 already exists → updates fields in-place without touching other versions.
+ * Does NOT delete historical AppVersion records.
+ */
+const seedCurrentAppVersion = async () => {
   try {
     await AppVersion.findOneAndUpdate(
       { platform: 'android', versionCode: 4 },
@@ -75,17 +81,17 @@ const seedAppVersion103 = async () => {
       },
       { upsert: true, new: true, runValidators: true }
     );
-    console.log('[Auto-Seed]: Version 1.0.3 successfully registered in MongoDB Atlas');
+    console.log('[AppVersion] v1.0.3 (versionCode 4) seeded successfully.');
   } catch (e) {
-    console.warn('[Auto-Seed Warning]:', e.message);
+    console.warn('[AppVersion] Seed warning:', e.message);
   }
 };
 
 connectDB().then(() => {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    seedAppVersion103();
-    // M3: Run cleanup once on start, then repeat every 24h while server is up
+    seedCurrentAppVersion();
+    // Run cleanup once on start, then repeat every 24h
     runRejectedCleanupJob();
     setInterval(runRejectedCleanupJob, 24 * 60 * 60 * 1000);
   });
