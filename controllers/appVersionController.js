@@ -3,8 +3,10 @@ const AppVersion = require('../models/AppVersion');
 // GET /api/app-version/android -> Get latest active Android version metadata
 const getLatestAndroidVersion = async (req, res) => {
   try {
-    const versionDoc = await AppVersion.findOne({ platform: 'android', isActive: true })
-      .sort({ versionCode: -1 });
+    const versions = await AppVersion.find({ platform: 'android', isActive: true })
+      .sort({ versionCode: -1 })
+      .limit(1);
+    const versionDoc = versions && versions.length > 0 ? versions[0] : null;
 
     if (!versionDoc) {
       // Default fallback if no version document has been seeded in MongoDB yet
