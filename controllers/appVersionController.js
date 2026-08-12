@@ -2,28 +2,23 @@ const AppVersion = require('../models/AppVersion');
 
 const ensureLatestVersion103 = async () => {
   try {
-    return await AppVersion.findOneAndUpdate(
-      { platform: 'android', versionCode: 4 },
-      {
-        $set: {
-          platform: 'android',
-          versionName: '1.0.3',
-          versionCode: 4,
-          minimumSupportedVersionCode: 1,
-          apkUrl: 'https://gym-tracker-backend-qpu8.onrender.com/releases/application-4ea2ba98-93d2-4bc5-b15f-8ba1f11a6481.apk',
-          sha256: '8f486ba62716b036307bf657da23709c8320b11cd97fb912f02bf1f547feeecd',
-          fileSizeBytes: 75773012,
-          releaseNotes: [
-            'Direct User Login without admin approval (configurable via Admin Dashboard)',
-            'Admin Dashboard System Configuration toggle card',
-            'Plan schedule editing navigation fix',
-          ],
-          forceUpdate: false,
-          isActive: true,
-        },
-      },
-      { upsert: true, new: true, runValidators: true }
-    );
+    await AppVersion.deleteMany({});
+    return await AppVersion.create({
+      platform: 'android',
+      versionName: '1.0.3',
+      versionCode: 4,
+      minimumSupportedVersionCode: 1,
+      apkUrl: 'https://gym-tracker-backend-qpu8.onrender.com/releases/application-4ea2ba98-93d2-4bc5-b15f-8ba1f11a6481.apk',
+      sha256: '8f486ba62716b036307bf657da23709c8320b11cd97fb912f02bf1f547feeecd',
+      fileSizeBytes: 75773012,
+      releaseNotes: [
+        'Direct User Login without admin approval (configurable via Admin Dashboard)',
+        'Admin Dashboard System Configuration toggle card',
+        'Plan schedule editing navigation fix',
+      ],
+      forceUpdate: false,
+      isActive: true,
+    });
   } catch (e) {
     console.warn('[ensureLatestVersion103 Warning]:', e.message);
     return null;
@@ -33,12 +28,8 @@ const ensureLatestVersion103 = async () => {
 // GET /api/app-version/android -> Get latest active Android version metadata
 const getLatestAndroidVersion = async (req, res) => {
   try {
-    const versions = await AppVersion.find({ platform: 'android', isActive: true })
-      .sort({ versionCode: -1 })
-      .limit(1);
-    let versionDoc = versions && versions.length > 0 ? versions[0] : null;
-
-    if (!versionDoc || versionDoc.versionCode < 4) {
+    let versionDoc = await AppVersion.findOne({ platform: 'android', versionCode: 4 });
+    if (!versionDoc) {
       versionDoc = await ensureLatestVersion103();
     }
 
