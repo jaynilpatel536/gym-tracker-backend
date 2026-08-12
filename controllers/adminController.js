@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const { Notification, NOTIFICATION_TYPES } = require('../models/Notification');
 const AuditLog = require('../models/AuditLog');
+const SystemSetting = require('../models/SystemSetting');
 
 // GET /api/admin/users -> List users with status filters, search & pagination
 const getUsers = async (req, res) => {
@@ -346,6 +347,56 @@ const runRejectedCleanupJob = async () => {
   }
 };
 
+// GET /api/admin/settings -> Get system settings
+const getSystemSettings = async (req, res) => {
+  try {
+    const setting = await SystemSetting.findOne({ key: 'requireRegistrationApproval' });
+    const requireRegistrationApproval = setting ? !!setting.value : false; // Default: false (Direct Login)
+    res.json({ requireRegistrationApproval });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch system settings', error: err.message });
+  }
+};
+
+// PUT /api/admin/settings -> Update system settings
+const updateSystemSettings = async (req, res) => {
+  try {
+    const { requireRegistrationApproval } = req.body;
+    if (typeof requireRegistrationApproval !== 'boolean') {
+      return res.status(400).json({ message: 'requireRegistrationApproval must be a boolean' });
+    }
+
+    const setting = await SystemSetting.findOneAndUpdate(
+      { key: 'requireRegistrationApproval' },
+      {
+        key: 'requireRegistrationApproval',
+        value: requireRegistrationApproval,
+        updatedBy: req.user._id,
+      },
+      { upsert: true, new: true }
+    );
+
+    try {
+      await AuditLog.create({
+        action: 'SYSTEM_SETTING_UPDATED',
+        performedBy: req.user._id,
+        details: `Set requireRegistrationApproval to ${requireRegistrationApproval}`,
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent') || '',
+      });
+    } catch (auditErr) {
+      console.warn('[updateSystemSettings AuditLog Warning]:', auditErr.message);
+    }
+
+    res.json({
+      message: 'System setting updated successfully',
+      requireRegistrationApproval: !!setting.value,
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to update system setting', error: err.message });
+  }
+};
+
 module.exports = {
   getUsers,
   getUserById,
@@ -357,4 +408,6 @@ module.exports = {
   markNotificationsRead,
   cleanupRejectedAccounts,
   runRejectedCleanupJob,
+  getSystemSettings,
+  updateSystemSettings,
 };

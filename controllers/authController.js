@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { Notification, NOTIFICATION_TYPES } = require('../models/Notification');
 const AuditLog = require('../models/AuditLog');
+const SystemSetting = require('../models/SystemSetting');
 
 const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL || 'progressfit.app@gmail.com').trim().toLowerCase();
 
@@ -15,7 +16,7 @@ const generateToken = (userId, tokenVersion = 0, rememberMe = true) => {
 
 /**
  * POST /api/auth/signup
- * Always creates non-admin accounts as 'Pending'
+ * Respects requireRegistrationApproval system setting (default: false / Direct Login)
  */
 const signup = async (req, res) => {
   try {
@@ -32,33 +33,30 @@ const signup = async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
     const existingUser = await User.findOne({ email: normalizedEmail });
 
+    // Check system setting for registration approval requirement
+    const approvalSetting = await SystemSetting.findOne({ key: 'requireRegistrationApproval' });
+    const requireApproval = approvalSetting ? !!approvalSetting.value : false; // Default: false (Direct Login)
+
     // C2: Allow re-registration if previous account was Rejected
     if (existingUser) {
       if (existingUser.status === 'Rejected') {
-        // Reset the rejected account back to Pending with updated details
+        const nextStatus = requireApproval ? 'Pending' : 'Approved';
+        // Reset the rejected account back with updated details
         existingUser.name = name.trim();
         existingUser.password = password; // will be hashed by pre-save hook
         existingUser.phoneNumber = phoneNumber ? phoneNumber.trim() : existingUser.phoneNumber;
-        existingUser.status = 'Pending';
+        existingUser.status = nextStatus;
         existingUser.rejectionReason = '';
-        existingUser.statusChangedAt = null;
+        existingUser.statusChangedAt = new Date();
         existingUser.statusChangedBy = null;
         existingUser.tokenVersion = (existingUser.tokenVersion || 0) + 1; // Invalidate any old sessions
         await existingUser.save();
 
-        // Create new admin notification for re-registration
         try {
-          await Notification.create({
-            recipientRole: 'ADMIN',
-            type: NOTIFICATION_TYPES.NEW_REGISTRATION,
-            title: 'Re-Registration Request',
-            message: `${existingUser.name} (${existingUser.email}) has re-submitted a registration request.`,
-            relatedUser: existingUser._id,
-          });
           await AuditLog.create({
             action: 'USER_RE_REGISTERED',
             targetUser: existingUser._id,
-            details: `User re-registered after previous rejection: ${existingUser.email}`,
+            details: `User re-registered after previous rejection (status: ${nextStatus})`,
             ipAddress: req.ip,
             userAgent: req.get('user-agent') || '',
           });
@@ -67,8 +65,10 @@ const signup = async (req, res) => {
         }
 
         return res.status(201).json({
-          message: 'Your re-registration request has been submitted. Please wait for administrator approval.',
-          status: 'Pending',
+          message: nextStatus === 'Approved'
+            ? 'Account re-registered successfully! You can now log in immediately.'
+            : 'Your re-registration request has been submitted. Please wait for administrator approval.',
+          status: nextStatus,
         });
       }
 
@@ -76,9 +76,9 @@ const signup = async (req, res) => {
       return res.status(400).json({ message: 'An account with this email address already exists.' });
     }
 
-    // Auto-approve Super Admin
+    // Auto-approve Super Admin or if requireApproval setting is Disabled
     const isSuperAdmin = normalizedEmail === SUPER_ADMIN_EMAIL;
-    const initialStatus = isSuperAdmin ? 'Approved' : 'Pending';
+    const initialStatus = isSuperAdmin || !requireApproval ? 'Approved' : 'Pending';
 
     const user = await User.create({
       name: name.trim(),
@@ -87,7 +87,6 @@ const signup = async (req, res) => {
       phoneNumber: phoneNumber ? phoneNumber.trim() : '',
       status: initialStatus,
       isAdmin: isSuperAdmin,
-      // BUG-015 FIX: set statusChangedAt on registration so cleanup job can target stale pending accounts
       statusChangedAt: new Date(),
     });
 
@@ -105,15 +104,17 @@ const signup = async (req, res) => {
         await Notification.create({
           recipientRole: 'ADMIN',
           type: NOTIFICATION_TYPES.NEW_REGISTRATION,
-          title: 'New Account Approval Request',
-          message: `${user.name} (${user.email}) has registered and is waiting for account approval.`,
+          title: user.status === 'Approved' ? 'New User Registered' : 'New Account Approval Request',
+          message: user.status === 'Approved'
+            ? `${user.name} (${user.email}) has registered and account is Approved (Direct Login).`
+            : `${user.name} (${user.email}) has registered and is waiting for account approval.`,
           relatedUser: user._id,
         });
 
         await AuditLog.create({
           action: 'USER_REGISTERED',
           targetUser: user._id,
-          details: `New registration request submitted by ${user.name}`,
+          details: `New registration submitted by ${user.name} (status: ${user.status})`,
           ipAddress: req.ip,
           userAgent: req.get('user-agent') || '',
         });
@@ -122,10 +123,9 @@ const signup = async (req, res) => {
       console.warn('[signup AuditLog Warning]:', auditErr.message);
     }
 
-    // NEVER return token on signup. Force user to log in after approval.
     res.status(201).json({
-      message: isSuperAdmin
-        ? 'Super Admin account created successfully. Please log in.'
+      message: user.status === 'Approved'
+        ? 'Account created successfully! You can now log in immediately.'
         : 'Registration submitted successfully. Your account is waiting for administrator approval.',
       status: user.status,
     });

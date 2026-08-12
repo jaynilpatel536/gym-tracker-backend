@@ -50,23 +50,23 @@ app.use((err, req, res, next) => {
 
 const AppVersion = require('./models/AppVersion');
 
-const seedAppVersion102 = async () => {
+const seedAppVersion103 = async () => {
   try {
     await AppVersion.findOneAndUpdate(
-      { platform: 'android', versionCode: 3 },
+      { platform: 'android', versionCode: 4 },
       {
         $set: {
           platform: 'android',
-          versionName: '1.0.2',
-          versionCode: 3,
+          versionName: '1.0.3',
+          versionCode: 4,
           minimumSupportedVersionCode: 1,
-          apkUrl: 'https://gym-tracker-backend-qpu8.onrender.com/releases/application-a985cd8a-c81f-4c2c-b095-244909f73553.apk',
-          sha256: '64654ea87377304014a8ea18cf04038af06c1acbfb47b1ae7c6c1e1d5727e0a1',
-          fileSizeBytes: 75769552,
+          apkUrl: 'https://gym-tracker-backend-qpu8.onrender.com/releases/application-4ea2ba98-93d2-4bc5-b15f-8ba1f11a6481.apk',
+          sha256: '8f486ba62716b036307bf657da23709c8320b11cd97fb912f02bf1f547feeecd',
+          fileSizeBytes: 75773012,
           releaseNotes: [
-            'Instant 0ms app launch & background verification',
-            'Muscle group chip box text readability fix',
-            'Multi-user security and cache isolation',
+            'Direct User Login without admin approval (configurable via Admin Dashboard)',
+            'Admin Dashboard System Configuration toggle card',
+            'Plan schedule editing navigation fix',
           ],
           forceUpdate: false,
           isActive: true,
@@ -74,7 +74,7 @@ const seedAppVersion102 = async () => {
       },
       { upsert: true, new: true, runValidators: true }
     );
-    console.log('[Auto-Seed]: Version 1.0.2 successfully registered in MongoDB Atlas');
+    console.log('[Auto-Seed]: Version 1.0.3 successfully registered in MongoDB Atlas');
   } catch (e) {
     console.warn('[Auto-Seed Warning]:', e.message);
   }
@@ -83,7 +83,7 @@ const seedAppVersion102 = async () => {
 connectDB().then(() => {
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    seedAppVersion102();
+    seedAppVersion103();
     // M3: Run cleanup once on start, then repeat every 24h while server is up
     runRejectedCleanupJob();
     setInterval(runRejectedCleanupJob, 24 * 60 * 60 * 1000);

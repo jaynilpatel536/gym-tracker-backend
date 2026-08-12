@@ -9,6 +9,8 @@ const {
   getNotifications,
   markNotificationsRead,
   cleanupRejectedAccounts,
+  getSystemSettings,
+  updateSystemSettings,
 } = require('../controllers/adminController');
 const { protect, admin } = require('../middleware/auth');
 
@@ -16,6 +18,9 @@ const router = express.Router();
 
 // All routes require authentication & admin role (`protect` + `admin`)
 router.use(protect, admin);
+
+router.get('/settings', getSystemSettings);
+router.put('/settings', updateSystemSettings);
 
 router.get('/users', getUsers);
 router.get('/users/:id', getUserById);
