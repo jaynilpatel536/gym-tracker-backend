@@ -67,8 +67,8 @@ const seedCurrentAppVersion = async () => {
           versionName: '1.0.3',
           versionCode: 4,
           minimumSupportedVersionCode: 1,
-          apkUrl: 'https://gym-tracker-backend-qpu8.onrender.com/releases/application-bef3be50-716b-433d-8d32-fb18d59c8145.apk',
-          sha256: '7568abc429afa4502d8f160be12980fe87986bfcbd7265d71ce016867a1ef660',
+          apkUrl: 'https://expo.dev/artifacts/eas/jQa61kvpuuIlc2IpSPWrueevAIWfotAzwuckgzQzEz8.apk',
+          sha256: '727e98338a650e587ba20fb1eba60cc39e1a6f7bb7bc6887cd3d1492b65ff288',
           fileSizeBytes: 75769500,
           releaseNotes: [
             'Direct User Login without admin approval (configurable via Admin Dashboard)',
