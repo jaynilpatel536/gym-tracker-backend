@@ -86,7 +86,14 @@ const seedCurrentAppVersion = async () => {
   }
 };
 
-connectDB().then(() => {
+connectDB().then(async () => {
+  try {
+    await UserExerciseOverload.syncIndexes();
+    console.log('[UserExerciseOverload] Indexes synced successfully.');
+  } catch (idxErr) {
+    console.warn('[UserExerciseOverload] Index sync warning:', idxErr.message);
+  }
+
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     seedCurrentAppVersion();
