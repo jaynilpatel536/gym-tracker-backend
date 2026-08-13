@@ -2,7 +2,9 @@ const fs = require('fs');
 const Exercise = require('../models/Exercise');
 const ExerciseTemplate = require('../models/ExerciseTemplate');
 const ExerciseVideo = require('../models/ExerciseVideo');
+const PersonalExercise = require('../models/PersonalExercise');
 const UserExerciseOverload = require('../models/UserExerciseOverload');
+const { resolveExerciseIdentity } = require('../utils/exerciseIdentity');
 const { uploadToCloudinary, deleteFromCloudinary } = require('../config/cloudinary');
 
 // Helper to resolve an Exercise ID or ExerciseTemplate ID to an ExerciseTemplate document
@@ -317,16 +319,33 @@ const uploadExerciseVideo = async (req, res) => {
 // GET /api/exercises/:id/auto-overload -> Get auto-progression settings
 const getAutoOverloadSettings = async (req, res) => {
   try {
-    const template = await resolveTemplate(req.params.id);
-    if (!template) return res.status(404).json({ message: 'Exercise not found' });
+    const identity = await resolveExerciseIdentity(req.params.id);
+    if (!identity.templateId && !identity.personalExerciseId) {
+      return res.status(404).json({ message: 'Exercise not found' });
+    }
 
     let profile = null;
+    let exerciseName = 'Exercise';
+
     if (req.user) {
-      profile = await UserExerciseOverload.findOne({ user: req.user._id, template: template._id });
+      const filter = identity.isPersonal
+        ? { user: req.user._id, personalExercise: identity.personalExerciseId }
+        : { user: req.user._id, template: identity.templateId };
+      profile = await UserExerciseOverload.findOne(filter);
+    }
+
+    if (identity.isPersonal) {
+      const pe = await PersonalExercise.findById(identity.personalExerciseId);
+      if (pe) exerciseName = pe.name;
+    } else {
+      const tpl = await ExerciseTemplate.findById(identity.templateId);
+      if (tpl) exerciseName = tpl.name;
     }
 
     res.json({
-      templateId: template._id,
+      templateId: identity.templateId || identity.personalExerciseId,
+      isPersonal: identity.isPersonal,
+      name: exerciseName,
       autoProgressiveEnabled: profile ? profile.autoProgressiveEnabled : false,
       increaseIntervalWeeks: profile ? profile.increaseIntervalWeeks : 3,
       increaseWeightKg: profile ? profile.increaseWeightKg : 2.5,
@@ -351,8 +370,10 @@ const updateAutoOverloadSettings = async (req, res) => {
       currentWeight,
     } = req.body;
 
-    const template = await resolveTemplate(req.params.id);
-    if (!template) return res.status(404).json({ message: 'Exercise not found' });
+    const identity = await resolveExerciseIdentity(req.params.id);
+    if (!identity.templateId && !identity.personalExerciseId) {
+      return res.status(404).json({ message: 'Exercise not found' });
+    }
 
     const now = new Date();
     const intervalWeeks = parseInt(increaseIntervalWeeks, 10) || 3;
@@ -388,31 +409,61 @@ const updateAutoOverloadSettings = async (req, res) => {
         for (const tpl of templates) {
           await UserExerciseOverload.findOneAndUpdate(
             { user: req.user._id, template: tpl._id },
-            { $set: payload },
+            { $set: payload, $setOnInsert: { user: req.user._id, template: tpl._id } },
+            { upsert: true, new: true }
+          );
+        }
+        const personalExercises = await PersonalExercise.find({ createdBy: req.user._id });
+        for (const pe of personalExercises) {
+          await UserExerciseOverload.findOneAndUpdate(
+            { user: req.user._id, personalExercise: pe._id },
+            { $set: payload, $setOnInsert: { user: req.user._id, personalExercise: pe._id } },
             { upsert: true, new: true }
           );
         }
       } else {
+        const filter = identity.isPersonal
+          ? { user: req.user._id, personalExercise: identity.personalExerciseId }
+          : { user: req.user._id, template: identity.templateId };
+
+        const setOnInsert = identity.isPersonal
+          ? { user: req.user._id, personalExercise: identity.personalExerciseId }
+          : { user: req.user._id, template: identity.templateId };
+
         await UserExerciseOverload.findOneAndUpdate(
-          { user: req.user._id, template: template._id },
-          { $set: payload },
+          filter,
+          { $set: payload, $setOnInsert: setOnInsert },
           { upsert: true, new: true }
         );
       }
     }
 
+    const filter = identity.isPersonal
+      ? { user: req.user._id, personalExercise: identity.personalExerciseId }
+      : { user: req.user._id, template: identity.templateId };
+
     const userProfile = req.user
-      ? await UserExerciseOverload.findOne({ user: req.user._id, template: template._id })
+      ? await UserExerciseOverload.findOne(filter)
       : null;
+
+    let exerciseName = 'Exercise';
+    if (identity.isPersonal) {
+      const pe = await PersonalExercise.findById(identity.personalExerciseId);
+      if (pe) exerciseName = pe.name;
+    } else {
+      const tpl = await ExerciseTemplate.findById(identity.templateId);
+      if (tpl) exerciseName = tpl.name;
+    }
 
     return res.json({
       message: applyToAllExercises
         ? 'Auto-overload settings applied to all exercise templates'
         : 'Auto-overload settings updated',
       exercise: {
-        _id: template._id,
-        templateId: template._id,
-        name: template.name,
+        _id: identity.templateId || identity.personalExerciseId,
+        templateId: identity.templateId || identity.personalExerciseId,
+        name: exerciseName,
+        isPersonal: identity.isPersonal,
         currentWeight: userProfile ? userProfile.currentWeight : 0,
         autoProgressiveEnabled: userProfile ? !!userProfile.autoProgressiveEnabled : false,
         increaseIntervalWeeks: userProfile ? userProfile.increaseIntervalWeeks : 3,
