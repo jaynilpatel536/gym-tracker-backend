@@ -35,7 +35,7 @@ const getOverloadProfile = async (req, res) => {
         profile = await UserExerciseOverload.create({
           user: req.user._id,
           template: templateId,
-          currentWeight: templateDoc.currentWeight || 0,
+          currentWeight: 0,
           increaseWeightKg: templateDoc.increaseWeightKg || 2.5,
           increaseIntervalWeeks: templateDoc.increaseIntervalWeeks || 3,
           autoProgressiveEnabled: templateDoc.autoProgressiveEnabled || false,
@@ -82,7 +82,7 @@ const updateOverloadProfile = async (req, res) => {
 
     const profile = await UserExerciseOverload.findOneAndUpdate(
       filter,
-      { $set: updateFields },
+      { $set: updateFields, $setOnInsert: filter },
       { new: true, upsert: true, runValidators: true }
     )
       .populate('template')
