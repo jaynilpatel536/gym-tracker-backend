@@ -60,21 +60,19 @@ app.use((err, req, res, next) => {
 const seedCurrentAppVersion = async () => {
   try {
     await AppVersion.findOneAndUpdate(
-      { platform: 'android', versionCode: 4 },
+      { platform: 'android', versionCode: 5 },
       {
         $set: {
           platform: 'android',
-          versionName: '1.0.3',
-          versionCode: 4,
+          versionName: '1.0.4',
+          versionCode: 5,
           minimumSupportedVersionCode: 1,
-          apkUrl: 'https://expo.dev/artifacts/eas/jQa61kvpuuIlc2IpSPWrueevAIWfotAzwuckgzQzEz8.apk',
-          sha256: '727e98338a650e587ba20fb1eba60cc39e1a6f7bb7bc6887cd3d1492b65ff288',
+          apkUrl: 'https://expo.dev/artifacts/eas/HFZ_EEj2Oy2eWvF4rVC5sUIuLXrNZ4VpB_ND53Ud_Qs.apk',
+          sha256: 'cb95aa52bb76827286b8315bbb4cf8fde82c062afb5401c5ee3489d34e315009',
           fileSizeBytes: 75769500,
           releaseNotes: [
-            'Direct User Login without admin approval (configurable via Admin Dashboard)',
-            'Admin Dashboard System Configuration toggle card',
-            'Plan schedule editing navigation fix',
-            'Migrated Expo FileSystem API to resolve deprecation warning',
+            'Automatic in-app update test release (v1.0.4)',
+            'System update verification test build',
           ],
           forceUpdate: false,
           isActive: true,
@@ -82,7 +80,7 @@ const seedCurrentAppVersion = async () => {
       },
       { upsert: true, new: true, runValidators: true }
     );
-    console.log('[AppVersion] v1.0.3 (versionCode 4) seeded successfully.');
+    console.log('[AppVersion] v1.0.4 (versionCode 5) seeded successfully.');
   } catch (e) {
     console.warn('[AppVersion] Seed warning:', e.message);
   }
